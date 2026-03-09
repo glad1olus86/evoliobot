@@ -12,21 +12,21 @@ router = Router()
 async def show_profile(callback: CallbackQuery, state: FSMContext):
     user = await get_user(callback.from_user.id)
     if not user:
-        await callback.answer("Вы не зарегистрированы.", show_alert=True)
+        await callback.answer("Nejste registrován/a.", show_alert=True)
         return
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     back_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="menu:main")]
+        [InlineKeyboardButton(text="🔙 Hlavní menu", callback_data="menu:main")]
     ])
 
     await callback.message.edit_text(
-        f"👤 <b>Ваш профиль</b>\n"
+        f"👤 <b>Váš profil</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"Имя: {user['first_name']}\n"
-        f"Фамилия: {user['last_name']}\n"
-        f"Телефон: {user['phone']}\n"
-        f"Дата регистрации: {user['created_at']}\n"
+        f"Jméno: {user['first_name']}\n"
+        f"Příjmení: {user['last_name']}\n"
+        f"Telefon: {user['phone']}\n"
+        f"Datum registrace: {user['created_at']}\n"
         f"━━━━━━━━━━━━━━━━━━━━━",
         reply_markup=back_kb,
     )
@@ -37,18 +37,18 @@ async def show_profile(callback: CallbackQuery, state: FSMContext):
 async def show_help(callback: CallbackQuery, state: FSMContext):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     back_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="menu:main")]
+        [InlineKeyboardButton(text="🔙 Hlavní menu", callback_data="menu:main")]
     ])
 
     await callback.message.edit_text(
-        "ℹ️ <b>Помощь</b>\n"
+        "ℹ️ <b>Nápověda</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "Этот бот позволяет просматривать\n"
-        "ваши судебные кейсы.\n\n"
-        "📂 <b>Кейсы</b> — список ваших дел\n"
-        "👤 <b>Профиль</b> — ваш аккаунт\n\n"
-        "По вопросам обращайтесь\n"
-        "к вашему адвокату.\n"
+        "Tento bot umožňuje prohlížet\n"
+        "vaše soudní případy.\n\n"
+        "📂 <b>Případy</b> — seznam vašich věcí\n"
+        "👤 <b>Profil</b> — váš účet\n\n"
+        "S dotazy se obracejte\n"
+        "na svého advokáta.\n"
         "━━━━━━━━━━━━━━━━━━━━━",
         reply_markup=back_kb,
     )
@@ -57,7 +57,6 @@ async def show_help(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "menu:main")
 async def back_to_main(callback: CallbackQuery, state: FSMContext):
-    # Очищаем FSM но сохраняем bot_msg_id
     data = await state.get_data()
     bot_msg_id = data.get("bot_msg_id")
     await state.clear()

@@ -40,7 +40,6 @@ def _record_attempt(telegram_id: int, success: bool):
 
 
 def _cases_list_kb(cases_dict: dict) -> InlineKeyboardMarkup:
-    """Строит inline-клавиатуру списка кейсов."""
     buttons = []
     for case_id, case in cases_dict.items():
         buttons.append([
@@ -50,38 +49,38 @@ def _cases_list_kb(cases_dict: dict) -> InlineKeyboardMarkup:
             )
         ])
     buttons.append([
-        InlineKeyboardButton(text="🔙 Главное меню", callback_data="menu:main")
+        InlineKeyboardButton(text="🔙 Hlavní menu", callback_data="menu:main")
     ])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-# ─── Кнопка "Просмотреть кейсы" ───
+# ─── Tlačítko "Zobrazit případy" ───
 
 @router.callback_query(F.data == "menu:cases")
 async def request_password(callback: CallbackQuery, state: FSMContext):
     user = await get_user(callback.from_user.id)
     if not user:
-        await callback.answer("Вы не зарегистрированы.", show_alert=True)
+        await callback.answer("Nejste registrován/a.", show_alert=True)
         return
 
     remaining = _check_blocked(callback.from_user.id)
     if remaining:
         minutes = int(remaining // 60) + 1
         await callback.answer(
-            f"Доступ заблокирован. Попробуйте через {minutes} мин.",
+            f"Přístup zablokován. Zkuste to za {minutes} min.",
             show_alert=True,
         )
         return
 
     await callback.message.edit_text(
-        "🔐 <b>Доступ к кейсам</b>\n\n"
-        "Введите пароль:",
+        "🔐 <b>Přístup k případům</b>\n\n"
+        "Zadejte heslo:",
     )
     await state.set_state(CasesAccess.waiting_password)
     await callback.answer()
 
 
-# ─── Ввод пароля (текстовое сообщение) ───
+# ─── Zadání hesla (textová zpráva) ───
 
 @router.message(CasesAccess.waiting_password)
 async def check_password(message: Message, state: FSMContext):
@@ -92,11 +91,10 @@ async def check_password(message: Message, state: FSMContext):
         minutes = int(remaining // 60) + 1
         await edit_ui(
             message, state,
-            f"🔒 Доступ заблокирован на {minutes} мин.\n\n{MAIN_MENU_TEXT}",
+            f"🔒 Přístup zablokován na {minutes} min.\n\n{MAIN_MENU_TEXT}",
             MAIN_MENU_KB,
         )
         await state.clear()
-        data_new = await state.get_data()  # preserve bot_msg_id handled by edit_ui
         return
 
     entered = message.text.strip()
@@ -109,8 +107,8 @@ async def check_password(message: Message, state: FSMContext):
         if remaining:
             await edit_ui(
                 message, state,
-                "❌ Неверный пароль. Превышено количество попыток.\n"
-                f"🔒 Доступ заблокирован на 10 минут.\n\n{MAIN_MENU_TEXT}",
+                "❌ Nesprávné heslo. Překročen počet pokusů.\n"
+                f"🔒 Přístup zablokován na 10 minut.\n\n{MAIN_MENU_TEXT}",
                 MAIN_MENU_KB,
             )
             await state.set_state(None)
@@ -119,15 +117,15 @@ async def check_password(message: Message, state: FSMContext):
             left = MAX_PASSWORD_ATTEMPTS - info.get("attempts", 0)
             await edit_ui(
                 message, state,
-                f"❌ Неверный пароль. Осталось попыток: {left}\n\n"
-                "Введите пароль:",
+                f"❌ Nesprávné heslo. Zbývající pokusy: {left}\n\n"
+                "Zadejte heslo:",
             )
         return
 
     _record_attempt(message.from_user.id, success=True)
 
-    # Пароль верный — загружаем кейсы
-    await edit_ui(message, state, "⏳ Загружаю ваши кейсы...")
+    # Heslo správné — načítáme případy
+    await edit_ui(message, state, "⏳ Načítám vaše případy...")
 
     user = await get_user(message.from_user.id)
     phone = user["phone"]
@@ -140,7 +138,7 @@ async def check_password(message: Message, state: FSMContext):
     if cases_list is None:
         await edit_ui(
             message, state,
-            "⚠️ Сервис кейсов временно недоступен.\nПопробуйте позже.\n\n" + MAIN_MENU_TEXT,
+            "⚠️ Služba případů je dočasně nedostupná.\nZkuste to prosím později.\n\n" + MAIN_MENU_TEXT,
             MAIN_MENU_KB,
         )
         return
@@ -148,7 +146,7 @@ async def check_password(message: Message, state: FSMContext):
     if not cases_list:
         await edit_ui(
             message, state,
-            "📭 По вашему профилю кейсы не найдены.\n\n" + MAIN_MENU_TEXT,
+            "📭 K vašemu profilu nebyly nalezeny žádné případy.\n\n" + MAIN_MENU_TEXT,
             MAIN_MENU_KB,
         )
         return
@@ -161,12 +159,12 @@ async def check_password(message: Message, state: FSMContext):
     await state.update_data(cases=cases_dict)
     await edit_ui(
         message, state,
-        "📂 <b>Ваши кейсы:</b>",
+        "📂 <b>Vaše případy:</b>",
         _cases_list_kb(cases_dict),
     )
 
 
-# ─── Карточка кейса ───
+# ─── Karta případu ───
 
 @router.callback_query(F.data.startswith("case:"))
 async def show_case_detail(callback: CallbackQuery, state: FSMContext):
@@ -176,18 +174,18 @@ async def show_case_detail(callback: CallbackQuery, state: FSMContext):
 
     case = cases.get(case_id)
     if not case:
-        await callback.answer("Кейс не найден.", show_alert=True)
+        await callback.answer("Případ nenalezen.", show_alert=True)
         return
 
     back_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Назад к кейсам", callback_data="back_to_cases")]
+        [InlineKeyboardButton(text="🔙 Zpět na případy", callback_data="back_to_cases")]
     ])
 
     await callback.message.edit_text(format_case_card(case), reply_markup=back_kb)
     await callback.answer()
 
 
-# ─── Навигация ───
+# ─── Navigace ───
 
 @router.callback_query(F.data == "back_to_cases")
 async def back_to_cases(callback: CallbackQuery, state: FSMContext):
@@ -195,11 +193,11 @@ async def back_to_cases(callback: CallbackQuery, state: FSMContext):
     cases_dict = data.get("cases", {})
 
     if not cases_dict:
-        await callback.answer("Список устарел. Запросите кейсы заново.", show_alert=True)
+        await callback.answer("Seznam je zastaralý. Vyžádejte si případy znovu.", show_alert=True)
         return
 
     await callback.message.edit_text(
-        "📂 <b>Ваши кейсы:</b>",
+        "📂 <b>Vaše případy:</b>",
         reply_markup=_cases_list_kb(cases_dict),
     )
     await callback.answer()

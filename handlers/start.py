@@ -23,15 +23,15 @@ async def cmd_start(message: Message, state: FSMContext):
     if user and user["is_registered"]:
         await send_ui(
             message, state,
-            f"С возвращением, {user['first_name']}!\n\n{MAIN_MENU_TEXT}",
+            f"Vítejte zpět, {user['first_name']}!\n\n{MAIN_MENU_TEXT}",
             MAIN_MENU_KB,
         )
     else:
         await send_ui(
             message, state,
-            "👋 <b>Добро пожаловать!</b>\n\n"
-            "Для начала работы пройдите регистрацию.\n\n"
-            "✏️ Введите ваше <b>имя</b>:",
+            "👋 <b>Vítejte!</b>\n\n"
+            "Pro zahájení práce je nutná registrace.\n\n"
+            "✏️ Zadejte své <b>jméno</b>:",
         )
         await state.set_state(Registration.waiting_first_name)
 
@@ -44,16 +44,16 @@ async def process_first_name(message: Message, state: FSMContext):
     if not validate_name(name):
         await edit_ui(
             message, state,
-            "⚠️ Имя должно содержать только буквы (2–50 символов).\n\n"
-            "✏️ Введите ваше <b>имя</b>:",
+            "⚠️ Jméno musí obsahovat pouze písmena (2–50 znaků).\n\n"
+            "✏️ Zadejte své <b>jméno</b>:",
         )
         return
 
     await state.update_data(first_name=name)
     await edit_ui(
         message, state,
-        f"✅ Имя: <b>{name}</b>\n\n"
-        "✏️ Введите вашу <b>фамилию</b>:",
+        f"✅ Jméno: <b>{name}</b>\n\n"
+        "✏️ Zadejte své <b>příjmení</b>:",
     )
     await state.set_state(Registration.waiting_last_name)
 
@@ -66,8 +66,8 @@ async def process_last_name(message: Message, state: FSMContext):
     if not validate_name(name):
         await edit_ui(
             message, state,
-            "⚠️ Фамилия должна содержать только буквы (2–50 символов).\n\n"
-            "✏️ Введите вашу <b>фамилию</b>:",
+            "⚠️ Příjmení musí obsahovat pouze písmena (2–50 znaků).\n\n"
+            "✏️ Zadejte své <b>příjmení</b>:",
         )
         return
 
@@ -75,10 +75,10 @@ async def process_last_name(message: Message, state: FSMContext):
     await state.update_data(last_name=name)
     await edit_ui(
         message, state,
-        f"✅ Имя: <b>{data['first_name']}</b>\n"
-        f"✅ Фамилия: <b>{name}</b>\n\n"
-        "✏️ Введите ваш <b>номер телефона</b>\n"
-        "(например, +420123456789):",
+        f"✅ Jméno: <b>{data['first_name']}</b>\n"
+        f"✅ Příjmení: <b>{name}</b>\n\n"
+        "✏️ Zadejte své <b>telefonní číslo</b>\n"
+        "(například +420123456789):",
     )
     await state.set_state(Registration.waiting_phone)
 
@@ -91,8 +91,8 @@ async def process_phone(message: Message, state: FSMContext):
     if not validate_phone(phone):
         await edit_ui(
             message, state,
-            "⚠️ Неверный формат. Введите номер в формате +XXXXXXXXXXX (9–15 цифр).\n\n"
-            "✏️ Введите ваш <b>номер телефона</b>:",
+            "⚠️ Nesprávný formát. Zadejte číslo ve formátu +XXXXXXXXXXX (9–15 číslic).\n\n"
+            "✏️ Zadejte své <b>telefonní číslo</b>:",
         )
         return
 
@@ -106,7 +106,7 @@ async def process_phone(message: Message, state: FSMContext):
         phone=normalized,
     )
 
-    # Сохраняем bot_msg_id до clear
+    # Uložíme bot_msg_id před clear
     old_data = await state.get_data()
     bot_msg_id = old_data.get("bot_msg_id")
     await state.clear()
@@ -115,8 +115,8 @@ async def process_phone(message: Message, state: FSMContext):
 
     await edit_ui(
         message, state,
-        f"🎉 <b>Регистрация завершена!</b>\n\n"
-        f"Добро пожаловать, {data['first_name']}!\n\n"
+        f"🎉 <b>Registrace dokončena!</b>\n\n"
+        f"Vítejte, {data['first_name']}!\n\n"
         f"{MAIN_MENU_TEXT}",
         MAIN_MENU_KB,
     )
