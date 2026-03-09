@@ -208,7 +208,7 @@ async def show_case_archive(callback: CallbackQuery, state: FSMContext):
         return
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Zpět na případ", callback_data=f"case:{case_id}")],
+        [InlineKeyboardButton(text="🔙 Zpět na poslední", callback_data=f"case:{case_id}")],
         [InlineKeyboardButton(text="🔙 Zpět na případy", callback_data="back_to_cases")],
     ])
 
