@@ -65,10 +65,9 @@ def format_case_card(items: list[dict]) -> str:
     nazev = _get(first, "pripadNazev")
     id_pripad = _get(first, "idPripad")
 
-    # Poslední aktualizace — poznamka z záznamu s nejvyšším idUkol
+    # Poslední aktualizace — predmet + poznamka z záznamu s nejvyšším idUkol
+    predmet = _get(first, "predmet", default="")
     poznamka = _html_to_telegram(_get(first, "poznamka", default=""))
-    if not poznamka:
-        poznamka = _get(first, "predmet", default="—")
     if len(poznamka) > 300:
         poznamka = poznamka[:297] + "..."
 
@@ -76,9 +75,15 @@ def format_case_card(items: list[dict]) -> str:
         f"📋 <b>{nazev}</b>",
         "━━━━━━━━━━━━━━━━━━━━━",
         f"🆔 ID případu: {id_pripad}",
-        f"📝 Poslední aktualizace:\n{poznamka}",
-        "━━━━━━━━━━━━━━━━━━━━━",
+        "📝 Poslední aktualizace:",
     ]
+
+    if predmet and predmet != "—":
+        lines.append(f"\n<b>{predmet}</b>")
+    if poznamka and poznamka != "—":
+        lines.append(f"\n{poznamka}")
+
+    lines.append("━━━━━━━━━━━━━━━━━━━━━")
 
     return "\n".join(lines)
 
