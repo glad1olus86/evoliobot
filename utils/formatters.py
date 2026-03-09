@@ -8,16 +8,6 @@ Pole z Data store "Aktivity Evolio":
 
 import re
 
-STAV_MAP = {
-    "AKTIVNI": "🟢 Aktivní",
-    "Aktivní": "🟢 Aktivní",
-    "UZAVREN": "🔴 Uzavřen",
-    "Uzavřen": "🔴 Uzavřen",
-    "PRERUSENI": "🟡 Pozastaven",
-    "Přerušen": "🟡 Pozastaven",
-    "ARCHIV": "⚫ Archiv",
-}
-
 
 def _strip_html(text: str) -> str:
     """Odstraní HTML tagy z textu."""
@@ -36,58 +26,79 @@ def _get(case: dict, *keys, default="—") -> str:
     return default
 
 
-def format_stav(stav: str) -> str:
-    if not stav or stav == "—":
-        return "❓ Stav neznámý"
-    return STAV_MAP.get(stav, f"📌 {stav}")
+def _format_date(raw: str) -> str:
+    """Extrahuje datum YYYY-MM-DD z ISO řetězce jako 2026-03-09T08:00:00."""
+    if not raw or raw == "—":
+        return "—"
+    return raw[:10]
 
 
-def format_case_card(case: dict) -> str:
-    """Úplná karta případu."""
-    nazev = _get(case, "pripadNazev", "predmet")
-    id_pripad = _get(case, "idPripad")
-    stav = format_stav(_get(case, "stav", default=""))
-    poznamka = _strip_html(_get(case, "poznamka", default=""))
-    termin = _get(case, "termin")
-    klient = _get(case, "klientJmeno")
-    email = _get(case, "klientEmail")
-    telefon = _get(case, "klientTelefon")
+def format_case_card(items: list[dict]) -> str:
+    """Karta případu (seskupeno podle idPripad).
+
+    items — seznam všech záznamů se stejným idPripad,
+    seřazených podle idUkol sestupně (nejnovější první).
+    """
+    first = items[0]
+    nazev = _get(first, "pripadNazev", "predmet")
+    id_pripad = _get(first, "idPripad")
+
+    # Poslední aktualizace — predmet z záznamu s nejvyšším idUkol
+    latest_predmet = _strip_html(_get(first, "predmet", default=""))
+    if not latest_predmet:
+        latest_predmet = _strip_html(_get(first, "poznamka", default="—"))
+    if len(latest_predmet) > 200:
+        latest_predmet = latest_predmet[:197] + "..."
 
     lines = [
         f"📋 <b>{nazev}</b>",
-        f"━━━━━━━━━━━━━━━━━━━━━",
+        "━━━━━━━━━━━━━━━━━━━━━",
         f"🆔 ID případu: {id_pripad}",
-        f"{stav}",
-        f"👤 Klient: {klient}",
+        f"📝 Poslední aktualizace: {latest_predmet}",
+        "━━━━━━━━━━━━━━━━━━━━━",
     ]
-
-    if telefon != "—":
-        lines.append(f"📞 Telefon: {telefon}")
-    if email != "—":
-        lines.append(f"📧 E-mail: {email}")
-    if termin != "—":
-        lines.append(f"📅 Termín: {termin}")
-    if poznamka and poznamka != "—":
-        if len(poznamka) > 300:
-            poznamka = poznamka[:297] + "..."
-        lines.append(f"📝 Poslední aktualizace: {poznamka}")
-
-    lines.append(f"━━━━━━━━━━━━━━━━━━━━━")
 
     return "\n".join(lines)
 
 
-def format_case_button_text(case: dict) -> str:
+def format_case_archive(items: list[dict]) -> str:
+    """Archiv — seznam všech záznamů pro jeden případ.
+
+    items seřazeny podle idUkol sestupně.
+    """
+    first = items[0]
+    nazev = _get(first, "pripadNazev", "predmet")
+    id_pripad = _get(first, "idPripad")
+
+    lines = [
+        f"📋 <b>{nazev}</b>",
+        f"🆔 ID případu: {id_pripad}",
+        "━━━━━━━━━━━━━━━━━━━━━",
+    ]
+
+    for item in items:
+        termin = _format_date(_get(item, "termin", default=""))
+        poznamka = _strip_html(_get(item, "poznamka", default=""))
+        if not poznamka:
+            poznamka = _strip_html(_get(item, "predmet", default="—"))
+        if len(poznamka) > 150:
+            poznamka = poznamka[:147] + "..."
+
+        if termin and termin != "—":
+            lines.append(f"📅 {termin} — {poznamka}")
+        else:
+            lines.append(f"📄 {poznamka}")
+
+    lines.append("━━━━━━━━━━━━━━━━━━━━━")
+
+    return "\n".join(lines)
+
+
+def format_case_button_text(items: list[dict]) -> str:
     """Krátký text pro inline tlačítko v seznamu případů."""
-    nazev = _get(case, "pripadNazev", "predmet", default="Bez názvu")
-    stav = _get(case, "stav", default="")
+    first = items[0]
+    nazev = _get(first, "pripadNazev", "predmet", default="Bez názvu")
 
-    if stav and stav != "—":
-        emoji = format_stav(stav).split(" ", 1)[0]
-        label = f"{emoji} {nazev}"
-    else:
-        label = nazev
-
-    if len(label) > 55:
-        label = label[:52] + "..."
-    return label
+    if len(nazev) > 55:
+        nazev = nazev[:52] + "..."
+    return nazev

@@ -10,7 +10,7 @@ from handlers.states import CasesAccess
 from handlers.ui import delete_user_msg, edit_ui, MAIN_MENU_KB, MAIN_MENU_TEXT
 from db.crud import get_user
 from services.make_client import fetch_cases
-from utils.formatters import format_case_card, format_case_button_text
+from utils.formatters import format_case_card, format_case_button_text, format_case_archive
 from config import CASES_PASSWORD, MAX_PASSWORD_ATTEMPTS, PASSWORD_BLOCK_SECONDS
 
 router = Router()
@@ -39,12 +39,23 @@ def _record_attempt(telegram_id: int, success: bool):
         info["attempts"] = 0
 
 
-def _cases_list_kb(cases_dict: dict) -> InlineKeyboardMarkup:
+def _group_by_pripad(cases_list: list[dict]) -> dict[str, list[dict]]:
+    """Seskupí záznamy podle idPripad, seřadí podle idUkol sestupně."""
+    groups: dict[str, list[dict]] = {}
+    for case in cases_list:
+        pid = str(case.get("idPripad", "unknown"))
+        groups.setdefault(pid, []).append(case)
+    for pid in groups:
+        groups[pid].sort(key=lambda x: int(x.get("idUkol", 0)), reverse=True)
+    return groups
+
+
+def _cases_list_kb(cases_grouped: dict[str, list[dict]]) -> InlineKeyboardMarkup:
     buttons = []
-    for case_id, case in cases_dict.items():
+    for case_id, items in cases_grouped.items():
         buttons.append([
             InlineKeyboardButton(
-                text=f"⚖️ {format_case_button_text(case)}",
+                text=f"⚖️ {format_case_button_text(items)}",
                 callback_data=f"case:{case_id}",
             )
         ])
@@ -151,16 +162,13 @@ async def check_password(message: Message, state: FSMContext):
         )
         return
 
-    cases_dict = {}
-    for i, case in enumerate(cases_list):
-        case_id = str(case.get("idUkol", case.get("idPripad", i)))
-        cases_dict[case_id] = case
+    cases_grouped = _group_by_pripad(cases_list)
 
-    await state.update_data(cases=cases_dict)
+    await state.update_data(cases=cases_grouped)
     await edit_ui(
         message, state,
         "📂 <b>Vaše případy:</b>",
-        _cases_list_kb(cases_dict),
+        _cases_list_kb(cases_grouped),
     )
 
 
@@ -172,16 +180,39 @@ async def show_case_detail(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     cases = data.get("cases", {})
 
-    case = cases.get(case_id)
-    if not case:
+    items = cases.get(case_id)
+    if not items:
         await callback.answer("Případ nenalezen.", show_alert=True)
         return
 
-    back_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Zpět na případy", callback_data="back_to_cases")]
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📜 Archiv", callback_data=f"archive:{case_id}")],
+        [InlineKeyboardButton(text="🔙 Zpět na případy", callback_data="back_to_cases")],
     ])
 
-    await callback.message.edit_text(format_case_card(case), reply_markup=back_kb)
+    await callback.message.edit_text(format_case_card(items), reply_markup=kb)
+    await callback.answer()
+
+
+# ─── Archiv případu ───
+
+@router.callback_query(F.data.startswith("archive:"))
+async def show_case_archive(callback: CallbackQuery, state: FSMContext):
+    case_id = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    cases = data.get("cases", {})
+
+    items = cases.get(case_id)
+    if not items:
+        await callback.answer("Případ nenalezen.", show_alert=True)
+        return
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Zpět na případ", callback_data=f"case:{case_id}")],
+        [InlineKeyboardButton(text="🔙 Zpět na případy", callback_data="back_to_cases")],
+    ])
+
+    await callback.message.edit_text(format_case_archive(items), reply_markup=kb)
     await callback.answer()
 
 
@@ -190,14 +221,14 @@ async def show_case_detail(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "back_to_cases")
 async def back_to_cases(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    cases_dict = data.get("cases", {})
+    cases_grouped = data.get("cases", {})
 
-    if not cases_dict:
+    if not cases_grouped:
         await callback.answer("Seznam je zastaralý. Vyžádejte si případy znovu.", show_alert=True)
         return
 
     await callback.message.edit_text(
         "📂 <b>Vaše případy:</b>",
-        reply_markup=_cases_list_kb(cases_dict),
+        reply_markup=_cases_list_kb(cases_grouped),
     )
     await callback.answer()
