@@ -70,7 +70,7 @@ def format_case_card(case: dict) -> str:
     if poznamka and poznamka != "—":
         if len(poznamka) > 300:
             poznamka = poznamka[:297] + "..."
-        lines.append(f"📝 Poznámka: {poznamka}")
+        lines.append(f"📝 Poslední aktualizace: {poznamka}")
 
     lines.append(f"━━━━━━━━━━━━━━━━━━━━━")
 
