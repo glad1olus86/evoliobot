@@ -3,9 +3,9 @@ HTTP-клиент для запросов к Make.com webhook.
 
 Бот POST {klientTelefon} → Make.com ищет в Data store → JSON
 
-Реальный формат ответа от Make.com:
-  {"json": "{\"idPripad\":896,\"pripadNazev\":\"...\",\"klientJmeno\":\"...\", ...}"}
-  — данные внутри поля "json" как экранированная строка.
+Реальный формат ответа от Make.com (с Array aggregator):
+  {"json": "{\"array\":[{\"data\":{\"idUkol\":...,\"idPripad\":...,...}},...],...}"}
+  — двойной JSON: внешний {"json": "..."} + внутренний с массивом array[].data
 """
 
 import json
@@ -42,6 +42,16 @@ def _parse_response(data) -> list[dict]:
             except json.JSONDecodeError:
                 logger.error("Failed to parse inner JSON: %s", data["json"][:200])
                 return []
+
+        # Array aggregator: {"array": [{"data": {...}}, ...], "__IMTAGGLENGTH__": N}
+        if "array" in data and isinstance(data["array"], list):
+            result = []
+            for item in data["array"]:
+                if isinstance(item, dict) and "data" in item:
+                    result.append(item["data"])
+                elif isinstance(item, dict):
+                    result.append(item)
+            return result
 
         # Обычный dict — это один кейс
         if data:
