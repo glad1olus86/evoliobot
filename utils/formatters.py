@@ -17,6 +17,28 @@ def _strip_html(text: str) -> str:
     return clean.strip()
 
 
+def _html_to_telegram(text: str) -> str:
+    """Převede HTML z Evolio na Telegram HTML formát.
+
+    <p>...</p> → text + newline
+    <b>, <i>, <u> — ponechá (Telegram je podporuje)
+    Ostatní tagy odstraní.
+    """
+    if not text:
+        return ""
+    # <br> / <br/> → newline
+    result = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    # </p> → newline
+    result = re.sub(r"</p>", "\n", result, flags=re.IGNORECASE)
+    # <p...> → nic
+    result = re.sub(r"<p[^>]*>", "", result, flags=re.IGNORECASE)
+    # Povolené Telegram tagy: b, i, u, s, code, pre
+    allowed = r"</?(?:b|i|u|s|code|pre)>"
+    # Odstraní ostatní tagy
+    result = re.sub(r"<(?!/?(?:b|i|u|s|code|pre)[ >/])[^>]+>", "", result)
+    return result.strip()
+
+
 def _get(case: dict, *keys, default="—") -> str:
     """Hledá hodnotu podle několika možných názvů polí."""
     for key in keys:
@@ -40,21 +62,21 @@ def format_case_card(items: list[dict]) -> str:
     seřazených podle idUkol sestupně (nejnovější první).
     """
     first = items[0]
-    nazev = _get(first, "pripadNazev", "predmet")
+    nazev = _get(first, "pripadNazev")
     id_pripad = _get(first, "idPripad")
 
-    # Poslední aktualizace — predmet z záznamu s nejvyšším idUkol
-    latest_predmet = _strip_html(_get(first, "predmet", default=""))
-    if not latest_predmet:
-        latest_predmet = _strip_html(_get(first, "poznamka", default="—"))
-    if len(latest_predmet) > 200:
-        latest_predmet = latest_predmet[:197] + "..."
+    # Poslední aktualizace — poznamka z záznamu s nejvyšším idUkol
+    poznamka = _html_to_telegram(_get(first, "poznamka", default=""))
+    if not poznamka:
+        poznamka = _get(first, "predmet", default="—")
+    if len(poznamka) > 300:
+        poznamka = poznamka[:297] + "..."
 
     lines = [
         f"📋 <b>{nazev}</b>",
         "━━━━━━━━━━━━━━━━━━━━━",
         f"🆔 ID případu: {id_pripad}",
-        f"📝 Poslední aktualizace: {latest_predmet}",
+        f"📝 Poslední aktualizace:\n{poznamka}",
         "━━━━━━━━━━━━━━━━━━━━━",
     ]
 
@@ -67,27 +89,37 @@ def format_case_archive(items: list[dict]) -> str:
     items seřazeny podle idUkol sestupně.
     """
     first = items[0]
-    nazev = _get(first, "pripadNazev", "predmet")
+    nazev = _get(first, "pripadNazev")
     id_pripad = _get(first, "idPripad")
 
     lines = [
-        f"📋 <b>{nazev}</b>",
+        f"📜 <b>Archiv: {nazev}</b>",
         f"🆔 ID případu: {id_pripad}",
         "━━━━━━━━━━━━━━━━━━━━━",
     ]
 
     for item in items:
         termin = _format_date(_get(item, "termin", default=""))
-        poznamka = _strip_html(_get(item, "poznamka", default=""))
-        if not poznamka:
-            poznamka = _strip_html(_get(item, "predmet", default="—"))
-        if len(poznamka) > 150:
-            poznamka = poznamka[:147] + "..."
+        predmet = _get(item, "predmet", default="")
+        poznamka = _html_to_telegram(_get(item, "poznamka", default=""))
 
+        if not poznamka:
+            poznamka = predmet if predmet and predmet != "—" else "—"
+
+        if len(poznamka) > 200:
+            poznamka = poznamka[:197] + "..."
+
+        # Заголовок: дата + predmet (жирный)
+        header_parts = []
         if termin and termin != "—":
-            lines.append(f"📅 {termin} — {poznamka}")
-        else:
-            lines.append(f"📄 {poznamka}")
+            header_parts.append(f"📅 {termin}")
+        if predmet and predmet != "—":
+            header_parts.append(f"<b>{predmet}</b>")
+
+        if header_parts:
+            lines.append(" — ".join(header_parts))
+        lines.append(poznamka)
+        lines.append("")  # пустая строка между записями
 
     lines.append("━━━━━━━━━━━━━━━━━━━━━")
 
