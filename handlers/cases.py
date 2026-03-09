@@ -153,7 +153,7 @@ async def check_password(message: Message, state: FSMContext):
 
     cases_dict = {}
     for i, case in enumerate(cases_list):
-        case_id = str(case.get("idPripad", case.get("idUkol", i)))
+        case_id = str(case.get("idUkol", case.get("idPripad", i)))
         cases_dict[case_id] = case
 
     await state.update_data(cases=cases_dict)
