@@ -92,7 +92,8 @@ async def check_password(message: Message, state: FSMContext):
         return
 
     entered = message.text.strip()
-    is_correct = verify_password(entered)
+    user = await get_user(message.from_user.id)
+    is_correct = verify_password(entered, user["password_hash"])
 
     if not is_correct:
         record_attempt(message.from_user.id, success=False)

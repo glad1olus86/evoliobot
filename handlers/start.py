@@ -13,6 +13,7 @@ from handlers.ui import (
 )
 from db.crud import get_user, create_user
 from utils.validators import validate_name, normalize_phone
+from utils.auth import hash_password
 
 router = Router()
 
@@ -24,6 +25,8 @@ CONTACT_KB = ReplyKeyboardMarkup(
     resize_keyboard=True,
     one_time_keyboard=True,
 )
+
+MIN_PASSWORD_LENGTH = 4
 
 
 @router.message(CommandStart())
@@ -87,8 +90,7 @@ async def process_last_name(message: Message, state: FSMContext):
     await state.update_data(last_name=name)
 
     # Удалить inline UI и показать ReplyKeyboard для контакта
-    old_data = await state.get_data()
-    bot_msg_id = old_data.get("bot_msg_id")
+    bot_msg_id = data.get("bot_msg_id")
     if bot_msg_id:
         try:
             await message.bot.delete_message(message.chat.id, bot_msg_id)
@@ -116,21 +118,21 @@ async def process_contact(message: Message, state: FSMContext):
         phone = "+" + phone
     normalized = normalize_phone(phone)
 
-    await _finish_registration(message, state, normalized)
+    await _after_phone(message, state, normalized)
 
 
 # ─── Debug: !!!+420... как ручной ввод номера ───
 
 @router.message(Registration.waiting_phone, F.text.startswith("!!!"))
 async def process_debug_phone(message: Message, state: FSMContext):
-    phone = message.text.strip()[3:]  # убрать !!!
+    phone = message.text.strip()[3:]
     normalized = normalize_phone(phone)
 
     if not normalized or len(normalized) < 9:
         await message.delete()
         return
 
-    await _finish_registration(message, state, normalized)
+    await _after_phone(message, state, normalized)
 
 
 # ─── Любой другой текст в waiting_phone ───
@@ -138,13 +140,11 @@ async def process_debug_phone(message: Message, state: FSMContext):
 @router.message(Registration.waiting_phone)
 async def process_phone_text(message: Message, state: FSMContext):
     await delete_user_msg(message)
-    # Игнорируем — ждём контакт или !!!debug
 
 
-# ─── Завершение регистрации ───
+# ─── После получения номера → создание пароля ───
 
-async def _finish_registration(message: Message, state: FSMContext, phone: str):
-    # Удалить сообщение пользователя (контакт)
+async def _after_phone(message: Message, state: FSMContext, phone: str):
     await delete_user_msg(message)
 
     # Удалить сообщение с ReplyKeyboard
@@ -160,17 +160,78 @@ async def _finish_registration(message: Message, state: FSMContext, phone: str):
     remove_msg = await message.answer("⏳", reply_markup=ReplyKeyboardRemove())
     await remove_msg.delete()
 
+    await state.update_data(phone=phone)
+
+    await send_ui(
+        message, state,
+        f"✅ Jméno: <b>{data['first_name']}</b>\n"
+        f"✅ Příjmení: <b>{data['last_name']}</b>\n"
+        f"✅ Telefon: <b>{phone}</b>\n\n"
+        "🔐 Nyní si vytvořte <b>osobní heslo</b>\n"
+        f"(minimálně {MIN_PASSWORD_LENGTH} znaky).\n\n"
+        "Toto heslo budete používat pro přístup\n"
+        "k případům a AI asistentovi.",
+    )
+    await state.set_state(Registration.waiting_new_password)
+
+
+# ─── Создание пароля ───
+
+@router.message(Registration.waiting_new_password)
+async def process_new_password(message: Message, state: FSMContext):
+    password = message.text.strip()
+    await delete_user_msg(message)
+
+    if len(password) < MIN_PASSWORD_LENGTH:
+        await edit_ui(
+            message, state,
+            f"⚠️ Heslo musí mít alespoň {MIN_PASSWORD_LENGTH} znaky.\n\n"
+            "🔐 Zadejte heslo:",
+        )
+        return
+
+    await state.update_data(new_password=password)
+    await edit_ui(
+        message, state,
+        "🔐 Zopakujte heslo pro potvrzení:",
+    )
+    await state.set_state(Registration.waiting_confirm_password)
+
+
+# ─── Подтверждение пароля ───
+
+@router.message(Registration.waiting_confirm_password)
+async def process_confirm_password(message: Message, state: FSMContext):
+    confirm = message.text.strip()
+    await delete_user_msg(message)
+
+    data = await state.get_data()
+    if confirm != data.get("new_password"):
+        await edit_ui(
+            message, state,
+            "⚠️ Hesla se neshodují. Zkuste to znovu.\n\n"
+            f"🔐 Zadejte nové heslo (min. {MIN_PASSWORD_LENGTH} znaky):",
+        )
+        await state.set_state(Registration.waiting_new_password)
+        return
+
+    # Всё ок — создаём пользователя
+    pw_hash = hash_password(confirm)
+
     await create_user(
         telegram_id=message.from_user.id,
         first_name=data["first_name"],
         last_name=data["last_name"],
-        phone=phone,
+        phone=data["phone"],
+        password_hash=pw_hash,
     )
 
-    # Сбросить state, сохранить нужное
+    bot_msg_id = (await state.get_data()).get("bot_msg_id")
     await state.clear()
+    if bot_msg_id:
+        await state.update_data(bot_msg_id=bot_msg_id)
 
-    await send_ui(
+    await edit_ui(
         message, state,
         f"🎉 <b>Registrace dokončena!</b>\n\n"
         f"Vítejte, {data['first_name']}!\n\n"

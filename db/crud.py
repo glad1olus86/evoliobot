@@ -15,13 +15,14 @@ async def get_user(telegram_id: int) -> dict | None:
 
 
 async def create_user(
-    telegram_id: int, first_name: str, last_name: str, phone: str
+    telegram_id: int, first_name: str, last_name: str, phone: str,
+    password_hash: str = "",
 ) -> dict:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            """INSERT INTO users (telegram_id, first_name, last_name, phone, is_registered)
-               VALUES (?, ?, ?, ?, 1)""",
-            (telegram_id, first_name, last_name, phone),
+            """INSERT INTO users (telegram_id, first_name, last_name, phone, password_hash, is_registered)
+               VALUES (?, ?, ?, ?, ?, 1)""",
+            (telegram_id, first_name, last_name, phone, password_hash),
         )
         await db.commit()
     return await get_user(telegram_id)

@@ -183,7 +183,8 @@ async def chat_check_password(message: Message, state: FSMContext):
         return
 
     entered = message.text.strip()
-    if not verify_password(entered):
+    user = await get_user(message.from_user.id)
+    if not verify_password(entered, user["password_hash"]):
         record_attempt(message.from_user.id, success=False)
 
         remaining = check_blocked(message.from_user.id)

@@ -2,12 +2,18 @@
 Společná logika ověření hesla a ochrany proti brute-force.
 """
 
+import hashlib
 import hmac
 import time
 
-from config import CASES_PASSWORD, MAX_PASSWORD_ATTEMPTS, PASSWORD_BLOCK_SECONDS
+from config import MAX_PASSWORD_ATTEMPTS, PASSWORD_BLOCK_SECONDS
 
 _password_attempts: dict[int, dict] = {}
+
+
+def hash_password(password: str) -> str:
+    """Vytvoří SHA-256 hash hesla."""
+    return hashlib.sha256(password.encode()).hexdigest()
 
 
 def check_blocked(telegram_id: int) -> float | None:
@@ -38,6 +44,7 @@ def remaining_attempts(telegram_id: int) -> int:
     return MAX_PASSWORD_ATTEMPTS - info.get("attempts", 0)
 
 
-def verify_password(entered: str) -> bool:
-    """Bezpečné porovnání hesla (timing-safe)."""
-    return hmac.compare_digest(entered, CASES_PASSWORD)
+def verify_password(entered: str, stored_hash: str) -> bool:
+    """Bezpečné porovnání hesla s uloženým hashem (timing-safe)."""
+    entered_hash = hash_password(entered)
+    return hmac.compare_digest(entered_hash, stored_hash)
