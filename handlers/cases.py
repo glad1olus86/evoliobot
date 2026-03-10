@@ -1,5 +1,3 @@
-import hmac
-import time
 import logging
 
 from aiogram import Router, F
@@ -11,32 +9,10 @@ from handlers.ui import delete_user_msg, edit_ui, MAIN_MENU_KB, MAIN_MENU_TEXT
 from db.crud import get_user
 from services.make_client import fetch_cases
 from utils.formatters import format_case_card, format_case_button_text, format_case_archive
-from config import CASES_PASSWORD, MAX_PASSWORD_ATTEMPTS, PASSWORD_BLOCK_SECONDS
+from utils.auth import check_blocked, record_attempt, remaining_attempts, verify_password
 
 router = Router()
 logger = logging.getLogger(__name__)
-
-_password_attempts: dict[int, dict] = {}
-
-
-def _check_blocked(telegram_id: int) -> float | None:
-    info = _password_attempts.get(telegram_id)
-    if not info:
-        return None
-    blocked_until = info.get("blocked_until", 0)
-    remaining = blocked_until - time.time()
-    return remaining if remaining > 0 else None
-
-
-def _record_attempt(telegram_id: int, success: bool):
-    if success:
-        _password_attempts.pop(telegram_id, None)
-        return
-    info = _password_attempts.setdefault(telegram_id, {"attempts": 0, "blocked_until": 0})
-    info["attempts"] += 1
-    if info["attempts"] >= MAX_PASSWORD_ATTEMPTS:
-        info["blocked_until"] = time.time() + PASSWORD_BLOCK_SECONDS
-        info["attempts"] = 0
 
 
 def _group_by_pripad(cases_list: list[dict]) -> dict[str, list[dict]]:
@@ -74,13 +50,20 @@ async def request_password(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Nejste registrován/a.", show_alert=True)
         return
 
-    remaining = _check_blocked(callback.from_user.id)
+    remaining = check_blocked(callback.from_user.id)
     if remaining:
         minutes = int(remaining // 60) + 1
         await callback.answer(
             f"Přístup zablokován. Zkuste to za {minutes} min.",
             show_alert=True,
         )
+        return
+
+    # Pokud už heslo bylo ověřeno — přeskočíme
+    data = await state.get_data()
+    if data.get("password_verified"):
+        await callback.answer()
+        await _load_and_show_cases(callback.message, state, callback.from_user.id)
         return
 
     await callback.message.edit_text(
@@ -97,7 +80,7 @@ async def request_password(callback: CallbackQuery, state: FSMContext):
 async def check_password(message: Message, state: FSMContext):
     await delete_user_msg(message)
 
-    remaining = _check_blocked(message.from_user.id)
+    remaining = check_blocked(message.from_user.id)
     if remaining:
         minutes = int(remaining // 60) + 1
         await edit_ui(
@@ -109,12 +92,12 @@ async def check_password(message: Message, state: FSMContext):
         return
 
     entered = message.text.strip()
-    is_correct = hmac.compare_digest(entered, CASES_PASSWORD)
+    is_correct = verify_password(entered)
 
     if not is_correct:
-        _record_attempt(message.from_user.id, success=False)
+        record_attempt(message.from_user.id, success=False)
 
-        remaining = _check_blocked(message.from_user.id)
+        remaining = check_blocked(message.from_user.id)
         if remaining:
             await edit_ui(
                 message, state,
@@ -124,8 +107,7 @@ async def check_password(message: Message, state: FSMContext):
             )
             await state.set_state(None)
         else:
-            info = _password_attempts.get(message.from_user.id, {})
-            left = MAX_PASSWORD_ATTEMPTS - info.get("attempts", 0)
+            left = remaining_attempts(message.from_user.id)
             await edit_ui(
                 message, state,
                 f"❌ Nesprávné heslo. Zbývající pokusy: {left}\n\n"
@@ -133,18 +115,22 @@ async def check_password(message: Message, state: FSMContext):
             )
         return
 
-    _record_attempt(message.from_user.id, success=True)
+    record_attempt(message.from_user.id, success=True)
+    await state.update_data(password_verified=True)
+    await state.set_state(None)
 
-    # Heslo správné — načítáme případy
+    await _load_and_show_cases(message, state, message.from_user.id)
+
+
+async def _load_and_show_cases(message: Message, state: FSMContext, telegram_id: int):
+    """Načte případy z Make.com a zobrazí seznam."""
     await edit_ui(message, state, "⏳ Načítám vaše případy...")
 
-    user = await get_user(message.from_user.id)
+    user = await get_user(telegram_id)
     phone = user["phone"]
     name = f"{user['first_name']} {user['last_name']}"
 
     cases_list = await fetch_cases(phone=phone, name=name)
-
-    await state.set_state(None)
 
     if cases_list is None:
         await edit_ui(

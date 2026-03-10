@@ -9,3 +9,8 @@ class Registration(StatesGroup):
 
 class CasesAccess(StatesGroup):
     waiting_password = State()
+
+
+class ChatMode(StatesGroup):
+    waiting_password = State()
+    chatting = State()

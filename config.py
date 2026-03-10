@@ -7,6 +7,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CASES_PASSWORD = os.getenv("CASES_PASSWORD")
 MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL")  # URL вебхука Make.com для запроса кейсов
 DB_PATH = os.getenv("DB_PATH", "bot.db")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Лимиты безопасности
 MAX_PASSWORD_ATTEMPTS = 3

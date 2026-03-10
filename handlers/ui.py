@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # ─── Inline klávesnice hlavního menu ───
 
 MAIN_MENU_KB = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="💬 AI Asistent", callback_data="menu:chat")],
     [InlineKeyboardButton(text="📂 Zobrazit případy", callback_data="menu:cases")],
     [InlineKeyboardButton(text="👤 Můj profil", callback_data="menu:profile")],
     [InlineKeyboardButton(text="ℹ️ Nápověda", callback_data="menu:help")],
