@@ -1,6 +1,9 @@
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import CommandStart
-from aiogram.types import Message
+from aiogram.types import (
+    Message, ReplyKeyboardMarkup, KeyboardButton,
+    ReplyKeyboardRemove,
+)
 from aiogram.fsm.context import FSMContext
 
 from handlers.states import Registration
@@ -9,9 +12,18 @@ from handlers.ui import (
     MAIN_MENU_KB, MAIN_MENU_TEXT,
 )
 from db.crud import get_user, create_user
-from utils.validators import validate_name, validate_phone, normalize_phone
+from utils.validators import validate_name, normalize_phone
 
 router = Router()
+
+# ReplyKeyboard s tlačítkem "Sdílet kontakt"
+CONTACT_KB = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="📱 Sdílet telefonní číslo", request_contact=True)]
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=True,
+)
 
 
 @router.message(CommandStart())
@@ -73,47 +85,92 @@ async def process_last_name(message: Message, state: FSMContext):
 
     data = await state.get_data()
     await state.update_data(last_name=name)
-    await edit_ui(
-        message, state,
+
+    # Удалить inline UI и показать ReplyKeyboard для контакта
+    old_data = await state.get_data()
+    bot_msg_id = old_data.get("bot_msg_id")
+    if bot_msg_id:
+        try:
+            await message.bot.delete_message(message.chat.id, bot_msg_id)
+        except Exception:
+            pass
+        await state.update_data(bot_msg_id=None)
+
+    contact_msg = await message.answer(
         f"✅ Jméno: <b>{data['first_name']}</b>\n"
         f"✅ Příjmení: <b>{name}</b>\n\n"
-        "✏️ Zadejte své <b>telefonní číslo</b>\n"
-        "(například +420123456789):",
+        "📱 Stiskněte tlačítko níže pro sdílení\n"
+        "vašeho telefonního čísla:",
+        reply_markup=CONTACT_KB,
     )
+    await state.update_data(contact_msg_id=contact_msg.message_id)
     await state.set_state(Registration.waiting_phone)
 
 
-@router.message(Registration.waiting_phone)
-async def process_phone(message: Message, state: FSMContext):
-    phone = message.text.strip()
-    await delete_user_msg(message)
+# ─── Приём контакта (кнопка "Поделиться") ───
 
-    if not validate_phone(phone):
-        await edit_ui(
-            message, state,
-            "⚠️ Nesprávný formát. Zadejte číslo ve formátu +XXXXXXXXXXX (9–15 číslic).\n\n"
-            "✏️ Zadejte své <b>telefonní číslo</b>:",
-        )
+@router.message(Registration.waiting_phone, F.contact)
+async def process_contact(message: Message, state: FSMContext):
+    phone = message.contact.phone_number
+    if not phone.startswith("+"):
+        phone = "+" + phone
+    normalized = normalize_phone(phone)
+
+    await _finish_registration(message, state, normalized)
+
+
+# ─── Debug: !!!+420... как ручной ввод номера ───
+
+@router.message(Registration.waiting_phone, F.text.startswith("!!!"))
+async def process_debug_phone(message: Message, state: FSMContext):
+    phone = message.text.strip()[3:]  # убрать !!!
+    normalized = normalize_phone(phone)
+
+    if not normalized or len(normalized) < 9:
+        await message.delete()
         return
 
+    await _finish_registration(message, state, normalized)
+
+
+# ─── Любой другой текст в waiting_phone ───
+
+@router.message(Registration.waiting_phone)
+async def process_phone_text(message: Message, state: FSMContext):
+    await delete_user_msg(message)
+    # Игнорируем — ждём контакт или !!!debug
+
+
+# ─── Завершение регистрации ───
+
+async def _finish_registration(message: Message, state: FSMContext, phone: str):
+    # Удалить сообщение пользователя (контакт)
+    await delete_user_msg(message)
+
+    # Удалить сообщение с ReplyKeyboard
     data = await state.get_data()
-    normalized = normalize_phone(phone)
+    contact_msg_id = data.get("contact_msg_id")
+    if contact_msg_id:
+        try:
+            await message.bot.delete_message(message.chat.id, contact_msg_id)
+        except Exception:
+            pass
+
+    # Убрать ReplyKeyboard
+    remove_msg = await message.answer("⏳", reply_markup=ReplyKeyboardRemove())
+    await remove_msg.delete()
 
     await create_user(
         telegram_id=message.from_user.id,
         first_name=data["first_name"],
         last_name=data["last_name"],
-        phone=normalized,
+        phone=phone,
     )
 
-    # Uložíme bot_msg_id před clear
-    old_data = await state.get_data()
-    bot_msg_id = old_data.get("bot_msg_id")
+    # Сбросить state, сохранить нужное
     await state.clear()
-    if bot_msg_id:
-        await state.update_data(bot_msg_id=bot_msg_id)
 
-    await edit_ui(
+    await send_ui(
         message, state,
         f"🎉 <b>Registrace dokončena!</b>\n\n"
         f"Vítejte, {data['first_name']}!\n\n"
