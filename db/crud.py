@@ -28,6 +28,19 @@ async def create_user(
     return await get_user(telegram_id)
 
 
+async def get_user_by_phone(phone: str) -> dict | None:
+    """Najde uživatele podle telefonního čísla."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM users WHERE phone = ? AND is_registered = 1", (phone,)
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
+
 async def update_user(telegram_id: int, **fields) -> dict | None:
     if not fields:
         return await get_user(telegram_id)

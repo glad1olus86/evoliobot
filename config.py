@@ -15,3 +15,7 @@ FSM_TIMEOUT_SECONDS = 1800     # 30 минут
 
 # Таймаут запроса к Make.com
 MAKE_REQUEST_TIMEOUT = 30  # секунд (Make.com может быть медленным)
+
+# Push-уведомления: вебхук-сервер
+PUSH_WEBHOOK_PORT = int(os.getenv("PUSH_WEBHOOK_PORT", "8080"))
+PUSH_WEBHOOK_SECRET = os.getenv("PUSH_WEBHOOK_SECRET", "evolio-push-secret-2024")
