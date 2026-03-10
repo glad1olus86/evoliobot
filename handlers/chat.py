@@ -21,6 +21,7 @@ from db.crud import get_user
 from services.make_client import fetch_cases
 from services.gemini_client import ask_gemini
 from utils.auth import check_blocked, record_attempt, remaining_attempts, verify_password
+from utils.formatters import format_case_archive
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -64,6 +65,18 @@ def _md_to_html(text: str) -> str:
     return text
 
 
+def _expand_details(text: str, cases_grouped: dict) -> str:
+    """Nahradí tagy {{DETAIL:ID}} kompletními daty případu."""
+    def _replacer(match):
+        pid = match.group(1)
+        items = cases_grouped.get(pid)
+        if not items:
+            return f"(Případ ID:{pid} nenalezen)"
+        return format_case_archive(items)
+
+    return re.sub(r"\{\{DETAIL:(\d+)\}\}", _replacer, text)
+
+
 def _postprocess(text: str) -> str:
     """Постобработка: контакты, финальная чистка."""
     html = _md_to_html(text)
@@ -100,36 +113,20 @@ def _strip_html_simple(text: str) -> str:
 
 
 def _cases_to_context(cases_grouped: dict) -> str | None:
-    """Převede data případů na čitelný text pro Gemini (ne JSON)."""
+    """Převede data případů na ohlav (jen názvy, bez osobních dat) pro Gemini."""
     if not cases_grouped:
         return None
 
-    lines = []
-    total = 0
+    lines = ["PŘÍPADY KLIENTA:"]
     for pid, items in cases_grouped.items():
         case_name = items[0].get("pripadNazev", f"Případ {pid}")
-        lines.append(f"=== PŘÍPAD: {case_name} (ID: {pid}) ===")
-        lines.append(f"Klient: {items[0].get('klientJmeno', '?')}")
-        lines.append(f"Telefon: {items[0].get('klientTelefon', '?')}")
-        lines.append(f"E-mail: {items[0].get('klientEmail', '?')}")
-        lines.append("")
-
-        for i, item in enumerate(items, 1):
-            total += 1
+        lines.append(f'\nPŘÍPAD ID:{pid} — "{case_name}"')
+        lines.append(f"  Počet záznamů: {len(items)}")
+        lines.append("  Záznamy:")
+        for item in items:
             predmet = item.get("predmet", "Bez předmětu")
-            poznamka = _strip_html_simple(item.get("poznamka", ""))
-            termin = item.get("termin", "")
-            if termin:
-                termin = termin[:10]  # YYYY-MM-DD
+            lines.append(f'  - "{predmet}"')
 
-            lines.append(f"  Záznam {i}:")
-            lines.append(f"    Předmět: {predmet}")
-            lines.append(f"    Poznámka: {poznamka}")
-            if termin:
-                lines.append(f"    Termín: {termin}")
-            lines.append("")
-
-    lines.insert(0, f"CELKEM ZÁZNAMŮ: {total}. Vypiš VŠECHNY.\n")
     return "\n".join(lines)
 
 
@@ -311,8 +308,12 @@ async def handle_chat_message(message: Message, state: FSMContext):
 
     await state.update_data(chat_history=chat_history)
 
+    # Подставить детали кейсов вместо {{DETAIL:ID}}
+    cases_grouped = data.get("cases", {})
+    expanded = _expand_details(response, cases_grouped)
+
     # Převést Markdown → Telegram HTML + kontakty
-    html_response = _postprocess(response)
+    html_response = _postprocess(expanded)
 
     # Zkrátit pokud přesahuje limit Telegramu (4096 znaků)
     if len(html_response) > 4000:
