@@ -288,11 +288,13 @@ async def handle_chat_message(message: Message, state: FSMContext):
     cases_context = data.get("cases_context")
 
     # Volání Gemini
+    logger.info("Asking Gemini: %s", user_text[:100])
     response = await ask_gemini(
         user_message=user_text,
         chat_history=chat_history,
         cases_context=cases_context,
     )
+    logger.info("Gemini response (%d chars): %s", len(response), response[:200])
 
     # Aktualizovat historii
     chat_history.append({"role": "user", "text": user_text})
@@ -319,10 +321,18 @@ async def handle_chat_message(message: Message, state: FSMContext):
     if len(html_response) > 4000:
         html_response = html_response[:4000] + "..."
 
-    bot_reply = await message.answer(
-        html_response,
-        link_preview_options=LinkPreviewOptions(is_disabled=True),
-    )
+    try:
+        bot_reply = await message.answer(
+            html_response,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+        )
+    except Exception as e:
+        logger.error("Telegram send error: %s\nResponse text: %s", e, html_response[:500])
+        # Отправить без HTML как fallback
+        plain = _strip_html_simple(html_response)
+        if len(plain) > 4000:
+            plain = plain[:4000] + "..."
+        bot_reply = await message.answer(plain)
 
     # Трекать message_id бота
     chat_msg_ids.append(bot_reply.message_id)
