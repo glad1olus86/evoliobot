@@ -5,7 +5,7 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, C
 from aiogram.fsm.context import FSMContext
 
 from handlers.states import CasesAccess
-from handlers.ui import delete_user_msg, edit_ui, cleanup_quick_ai, MAIN_MENU_KB, MAIN_MENU_TEXT
+from handlers.ui import delete_user_msg, edit_ui, cleanup_quick_ai, ensure_bot_msg, MAIN_MENU_KB, MAIN_MENU_TEXT
 from db.crud import get_user
 from services.make_client import fetch_cases
 from utils.formatters import format_case_card, format_case_button_text, format_case_archive
@@ -45,6 +45,7 @@ def _cases_list_kb(cases_grouped: dict[str, list[dict]]) -> InlineKeyboardMarkup
 
 @router.callback_query(F.data == "menu:cases")
 async def request_password(callback: CallbackQuery, state: FSMContext):
+    await ensure_bot_msg(callback, state)
     await cleanup_quick_ai(callback, state)
     user = await get_user(callback.from_user.id)
     if not user:
@@ -163,6 +164,7 @@ async def _load_and_show_cases(message: Message, state: FSMContext, telegram_id:
 
 @router.callback_query(F.data.startswith("case:"))
 async def show_case_detail(callback: CallbackQuery, state: FSMContext):
+    await ensure_bot_msg(callback, state)
     await cleanup_quick_ai(callback, state)
     case_id = callback.data.split(":", 1)[1]
     data = await state.get_data()
@@ -186,6 +188,7 @@ async def show_case_detail(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("archive:"))
 async def show_case_archive(callback: CallbackQuery, state: FSMContext):
+    await ensure_bot_msg(callback, state)
     await cleanup_quick_ai(callback, state)
     case_id = callback.data.split(":", 1)[1]
     data = await state.get_data()
@@ -209,6 +212,7 @@ async def show_case_archive(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "back_to_cases")
 async def back_to_cases(callback: CallbackQuery, state: FSMContext):
+    await ensure_bot_msg(callback, state)
     await cleanup_quick_ai(callback, state)
     data = await state.get_data()
     cases_grouped = data.get("cases", {})

@@ -69,6 +69,13 @@ async def edit_ui(message: Message, state: FSMContext, text: str,
     await send_ui(message, state, text, keyboard)
 
 
+async def ensure_bot_msg(callback: CallbackQuery, state: FSMContext):
+    """Восстанавливает bot_msg_id из callback (на случай рестарта бота)."""
+    data = await state.get_data()
+    if not data.get("bot_msg_id"):
+        await state.update_data(bot_msg_id=callback.message.message_id)
+
+
 async def cleanup_quick_ai(source: Message | CallbackQuery, state: FSMContext):
     """Smaže dočasné AI odpovědi + zprávy uživatele z quick-chatu."""
     data = await state.get_data()
