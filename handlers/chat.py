@@ -82,15 +82,16 @@ def _postprocess(text: str) -> str:
     html = _md_to_html(text)
 
     if _CONTACT_TRIGGERS.search(html):
+        # Убрать контакты, которые Gemini мог вставить сам
         if "732 394 849" in html:
-            # Gemini сам вставил контакты — убрать его версию, вставить нашу с календарём
-            # Удалить блок от телефона до конца (или до пустой строки после)
             html = re.sub(
                 r"\n*[📞☎️]*\s*\(?\+?420\)?\s*732\s*394\s*849.*$",
                 "",
                 html,
                 flags=re.DOTALL,
             )
+        # Убрать разделители, которые Gemini мог вставить (━, ---, ___ и т.п.)
+        html = re.sub(r"\n*[━─—\-_]{3,}\s*$", "", html)
         html = html.rstrip() + CONTACT_BLOCK
 
     return html
