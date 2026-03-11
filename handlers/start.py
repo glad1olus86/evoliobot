@@ -46,50 +46,43 @@ async def cmd_start(message: Message, state: FSMContext):
             message, state,
             "👋 <b>Vítejte!</b>\n\n"
             "Pro zahájení práce je nutná registrace.\n\n"
-            "✏️ Zadejte své <b>jméno</b>:",
+            "✏️ Zadejte své <b>jméno a příjmení</b>\n"
+            "(oddělené mezerou):",
         )
-        await state.set_state(Registration.waiting_first_name)
+        await state.set_state(Registration.waiting_full_name)
 
 
-@router.message(Registration.waiting_first_name)
-async def process_first_name(message: Message, state: FSMContext):
-    name = message.text.strip()
+@router.message(Registration.waiting_full_name)
+async def process_full_name(message: Message, state: FSMContext):
+    text = message.text.strip()
     await delete_user_msg(message)
 
-    if not validate_name(name):
+    parts = text.split()
+    if len(parts) < 2:
         await edit_ui(
             message, state,
-            "⚠️ Jméno musí obsahovat pouze písmena (2–50 znaků).\n\n"
-            "✏️ Zadejte své <b>jméno</b>:",
+            "⚠️ Zadejte <b>jméno i příjmení</b> oddělené mezerou.\n\n"
+            "✏️ Například: <i>Jan Novák</i>",
         )
         return
 
-    await state.update_data(first_name=name)
-    await edit_ui(
-        message, state,
-        f"✅ Jméno: <b>{name}</b>\n\n"
-        "✏️ Zadejte své <b>příjmení</b>:",
-    )
-    await state.set_state(Registration.waiting_last_name)
+    first_name = parts[0].capitalize()
+    last_name = " ".join(parts[1:]).title()
 
-
-@router.message(Registration.waiting_last_name)
-async def process_last_name(message: Message, state: FSMContext):
-    name = message.text.strip()
-    await delete_user_msg(message)
-
-    if not validate_name(name):
+    if not validate_name(first_name) or not all(
+        validate_name(p) for p in parts[1:]
+    ):
         await edit_ui(
             message, state,
-            "⚠️ Příjmení musí obsahovat pouze písmena (2–50 znaků).\n\n"
-            "✏️ Zadejte své <b>příjmení</b>:",
+            "⚠️ Jméno a příjmení musí obsahovat pouze písmena.\n\n"
+            "✏️ Zadejte své <b>jméno a příjmení</b>:",
         )
         return
 
-    data = await state.get_data()
-    await state.update_data(last_name=name)
+    await state.update_data(first_name=first_name, last_name=last_name)
 
     # Удалить inline UI и показать ReplyKeyboard для контакта
+    data = await state.get_data()
     bot_msg_id = data.get("bot_msg_id")
     if bot_msg_id:
         try:
@@ -99,8 +92,8 @@ async def process_last_name(message: Message, state: FSMContext):
         await state.update_data(bot_msg_id=None)
 
     contact_msg = await message.answer(
-        f"✅ Jméno: <b>{data['first_name']}</b>\n"
-        f"✅ Příjmení: <b>{name}</b>\n\n"
+        f"✅ Jméno: <b>{first_name}</b>\n"
+        f"✅ Příjmení: <b>{last_name}</b>\n\n"
         "📱 Stiskněte tlačítko níže pro sdílení\n"
         "vašeho telefonního čísla:",
         reply_markup=CONTACT_KB,
