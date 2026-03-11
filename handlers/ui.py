@@ -82,7 +82,7 @@ async def cleanup_quick_ai(source: Message | CallbackQuery, state: FSMContext):
             await bot.delete_message(chat_id, msg_id)
         except Exception:
             pass
-    await state.update_data(quick_ai_ids=[])
+    await state.update_data(quick_ai_ids=[], quick_history=[])
 
 
 async def _delete_old_ui(message: Message, state: FSMContext):

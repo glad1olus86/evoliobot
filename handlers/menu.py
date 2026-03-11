@@ -136,17 +136,29 @@ async def fallback_any_message(message: Message, state: FSMContext):
         )
         return
 
-    # Осмысленное сообщение → быстрый AI ответ
+    # Осмысленное сообщение → быстрый AI ответ с историей
     if _is_meaningful(text):
         await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
         from handlers.chat import _postprocess
 
-        response = await ask_gemini(user_message=text)
+        data = await state.get_data()
+        quick_history = data.get("quick_history", [])
+
+        response = await ask_gemini(
+            user_message=text,
+            chat_history=quick_history,
+        )
         html_response = _postprocess(response)
 
         if len(html_response) > 4000:
             html_response = html_response[:4000] + "..."
+
+        # Обновить историю
+        quick_history.append({"role": "user", "text": text})
+        quick_history.append({"role": "model", "text": response})
+        if len(quick_history) > 20:
+            quick_history = quick_history[-20:]
 
         try:
             reply = await message.answer(
@@ -159,11 +171,13 @@ async def fallback_any_message(message: Message, state: FSMContext):
             reply = await message.answer(plain[:4000])
 
         # Трекать сообщения юзера + бота для удаления при навигации
-        data = await state.get_data()
         quick_ai_ids = data.get("quick_ai_ids", [])
         quick_ai_ids.append(message.message_id)
         quick_ai_ids.append(reply.message_id)
-        await state.update_data(quick_ai_ids=quick_ai_ids)
+        await state.update_data(
+            quick_ai_ids=quick_ai_ids,
+            quick_history=quick_history,
+        )
         return
 
     # Бессмысленное (1-2 символа) → просто показать меню
@@ -175,6 +189,7 @@ async def _reset_to_menu(message: Message, state: FSMContext):
     await delete_user_msg(message)
 
     data = await state.get_data()
+    bot_msg_id = data.get("bot_msg_id")
     chat_msg_ids = data.get("chat_msg_ids", [])
     quick_ai_ids = data.get("quick_ai_ids", [])
 
@@ -185,6 +200,9 @@ async def _reset_to_menu(message: Message, state: FSMContext):
             pass
 
     await state.clear()
+    # Вернуть bot_msg_id чтобы send_ui мог удалить старое меню
+    if bot_msg_id:
+        await state.update_data(bot_msg_id=bot_msg_id)
 
     user = await get_user(message.from_user.id)
     if user and user["is_registered"]:
