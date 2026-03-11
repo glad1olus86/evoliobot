@@ -19,13 +19,18 @@ MIGRATION_ADD_PASSWORD = """
 ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT '';
 """
 
+MIGRATION_ADD_VERIFIED_AT = """
+ALTER TABLE users ADD COLUMN password_verified_at DATETIME DEFAULT NULL;
+"""
+
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(CREATE_USERS_TABLE)
-        # Миграция — если колонка ещё не существует
-        try:
-            await db.execute(MIGRATION_ADD_PASSWORD)
-        except Exception:
-            pass  # колонка уже есть
+        # Миграции — если колонки ещё не существуют
+        for migration in (MIGRATION_ADD_PASSWORD, MIGRATION_ADD_VERIFIED_AT):
+            try:
+                await db.execute(migration)
+            except Exception:
+                pass
         await db.commit()

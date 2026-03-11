@@ -1,20 +1,73 @@
 import logging
+import re
 
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    CallbackQuery, Message, InlineKeyboardMarkup,
+    InlineKeyboardButton, LinkPreviewOptions,
+)
+from aiogram.enums import ChatAction
 from aiogram.fsm.context import FSMContext
 
 from db.crud import get_user
 from handlers.states import ChatMode
 from handlers.ui import MAIN_MENU_KB, MAIN_MENU_TEXT, send_ui, delete_user_msg
+from services.gemini_client import ask_gemini
 
 router = Router()
 logger = logging.getLogger(__name__)
 
+# Минимум для "осмысленного" сообщения
+_MIN_MEANINGFUL_LEN = 3
+
+# Быстрые триггерные слова (1 слово, но осмысленное)
+_TRIGGER_WORDS = re.compile(
+    r"^(связь|контакт|помощь|помоги|запись|приём|прием|schůzka|pomoc|kontakt|"
+    r"запиши|позвони|напиши|otázka|dotaz|poradit|konzultace|привет|ahoj|здравствуйте)$",
+    re.IGNORECASE,
+)
+
+
+def _is_meaningful(text: str) -> bool:
+    """Zda zpráva vypadá jako skutečná otázka/žádost (ne náhodný znak)."""
+    text = text.strip()
+    if len(text) < _MIN_MEANINGFUL_LEN:
+        return False
+    # Одно слово — только если триггер
+    if " " not in text:
+        return bool(_TRIGGER_WORDS.match(text))
+    # Несколько слов — считаем осмысленным
+    return True
+
+
+async def _cleanup_quick_ai(message_or_callback, state: FSMContext):
+    """Удалить временные AI-ответы из меню."""
+    data = await state.get_data()
+    quick_ai_ids = data.get("quick_ai_ids", [])
+    bot = (
+        message_or_callback.bot
+        if hasattr(message_or_callback, "bot")
+        else message_or_callback.message.bot
+    )
+    chat_id = (
+        message_or_callback.chat.id
+        if hasattr(message_or_callback, "chat")
+        else message_or_callback.message.chat.id
+    )
+    for msg_id in quick_ai_ids:
+        try:
+            await bot.delete_message(chat_id, msg_id)
+        except Exception:
+            pass
+    await state.update_data(quick_ai_ids=[])
+
+
+# ─── Профиль ───
 
 @router.callback_query(F.data == "menu:profile")
 async def show_profile(callback: CallbackQuery, state: FSMContext):
+    await _cleanup_quick_ai(callback, state)
     user = await get_user(callback.from_user.id)
     if not user:
         await callback.answer("Nejste registrován/a.", show_alert=True)
@@ -37,8 +90,11 @@ async def show_profile(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+# ─── Nápověda ───
+
 @router.callback_query(F.data == "menu:help")
 async def show_help(callback: CallbackQuery, state: FSMContext):
+    await _cleanup_quick_ai(callback, state)
     back_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 Hlavní menu", callback_data="menu:main")]
     ])
@@ -59,55 +115,98 @@ async def show_help(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+# ─── Zpět do menu ───
+
 @router.callback_query(F.data == "menu:main")
 async def back_to_main(callback: CallbackQuery, state: FSMContext):
+    await _cleanup_quick_ai(callback, state)
     data = await state.get_data()
     bot_msg_id = data.get("bot_msg_id")
-    password_verified = data.get("password_verified")
     await state.clear()
     if bot_msg_id:
         await state.update_data(bot_msg_id=bot_msg_id)
-    if password_verified:
-        await state.update_data(password_verified=True)
 
     await callback.message.edit_text(MAIN_MENU_TEXT, reply_markup=MAIN_MENU_KB)
     await callback.answer()
 
 
-# ─── Команda /menu — возврат из любого режима ───
+# ─── /menu — возврат из любого режима ───
 
 @router.message(Command("menu"))
 async def cmd_menu(message: Message, state: FSMContext):
     await _reset_to_menu(message, state)
 
 
-# ─── Fallback: любое сообщение без стейта → меню или регистрация ───
+# ─── Fallback: любое сообщение без стейта ───
 
 @router.message()
 async def fallback_any_message(message: Message, state: FSMContext):
     """Ловит ВСЕ сообщения, не обработанные другими хендлерами."""
+    if not message.text:
+        await delete_user_msg(message)
+        return
+
+    text = message.text.strip()
+    user = await get_user(message.from_user.id)
+
+    # Не зарегистрирован — на регистрацию
+    if not user or not user["is_registered"]:
+        await delete_user_msg(message)
+        await send_ui(
+            message, state,
+            "👋 Nejprve se prosím zaregistrujte příkazem /start.",
+        )
+        return
+
+    # Осмысленное сообщение → быстрый AI ответ
+    if _is_meaningful(text):
+        await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+
+        from handlers.chat import _postprocess
+
+        response = await ask_gemini(user_message=text)
+        html_response = _postprocess(response)
+
+        if len(html_response) > 4000:
+            html_response = html_response[:4000] + "..."
+
+        try:
+            reply = await message.answer(
+                html_response,
+                link_preview_options=LinkPreviewOptions(is_disabled=True),
+            )
+        except Exception:
+            from handlers.chat import _strip_html_simple
+            plain = _strip_html_simple(html_response)
+            reply = await message.answer(plain[:4000])
+
+        # Трекать сообщения юзера + бота для удаления при навигации
+        data = await state.get_data()
+        quick_ai_ids = data.get("quick_ai_ids", [])
+        quick_ai_ids.append(message.message_id)
+        quick_ai_ids.append(reply.message_id)
+        await state.update_data(quick_ai_ids=quick_ai_ids)
+        return
+
+    # Бессмысленное (1-2 символа) → просто показать меню
     await _reset_to_menu(message, state)
 
 
 async def _reset_to_menu(message: Message, state: FSMContext):
-    """Удаляет сообщение юзера, чистит старые сообщения чата, показывает меню."""
+    """Удаляет сообщение юзера, чистит старые сообщения, показывает меню."""
     await delete_user_msg(message)
 
-    # Сохранить нужные данные
     data = await state.get_data()
-    password_verified = data.get("password_verified")
     chat_msg_ids = data.get("chat_msg_ids", [])
+    quick_ai_ids = data.get("quick_ai_ids", [])
 
-    # Удалить все сообщения чата (если остались после перезапуска и т.п.)
-    for msg_id in chat_msg_ids:
+    for msg_id in chat_msg_ids + quick_ai_ids:
         try:
             await message.bot.delete_message(message.chat.id, msg_id)
         except Exception:
             pass
 
     await state.clear()
-    if password_verified:
-        await state.update_data(password_verified=True)
 
     user = await get_user(message.from_user.id)
     if user and user["is_registered"]:

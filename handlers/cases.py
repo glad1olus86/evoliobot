@@ -9,7 +9,7 @@ from handlers.ui import delete_user_msg, edit_ui, MAIN_MENU_KB, MAIN_MENU_TEXT
 from db.crud import get_user
 from services.make_client import fetch_cases
 from utils.formatters import format_case_card, format_case_button_text, format_case_archive
-from utils.auth import check_blocked, record_attempt, remaining_attempts, verify_password
+from utils.auth import check_blocked, record_attempt, remaining_attempts, verify_password, is_session_valid, refresh_session
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -59,9 +59,8 @@ async def request_password(callback: CallbackQuery, state: FSMContext):
         )
         return
 
-    # Pokud už heslo bylo ověřeno — přeskočíme
-    data = await state.get_data()
-    if data.get("password_verified"):
+    # Pokud session platí (< 3 dny) — přeskočíme heslo
+    if await is_session_valid(callback.from_user.id):
         await callback.answer()
         await _load_and_show_cases(callback.message, state, callback.from_user.id)
         return
@@ -117,7 +116,7 @@ async def check_password(message: Message, state: FSMContext):
         return
 
     record_attempt(message.from_user.id, success=True)
-    await state.update_data(password_verified=True)
+    await refresh_session(message.from_user.id)
     await state.set_state(None)
 
     await _load_and_show_cases(message, state, message.from_user.id)

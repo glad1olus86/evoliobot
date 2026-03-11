@@ -20,7 +20,7 @@ from handlers.ui import delete_user_msg, send_ui, MAIN_MENU_KB, MAIN_MENU_TEXT
 from db.crud import get_user
 from services.make_client import fetch_cases
 from services.gemini_client import ask_gemini
-from utils.auth import check_blocked, record_attempt, remaining_attempts, verify_password
+from utils.auth import check_blocked, record_attempt, remaining_attempts, verify_password, is_session_valid, refresh_session
 from utils.formatters import format_case_archive
 
 router = Router()
@@ -149,8 +149,7 @@ async def start_chat(callback: CallbackQuery, state: FSMContext):
         )
         return
 
-    data = await state.get_data()
-    if data.get("password_verified"):
+    if await is_session_valid(callback.from_user.id):
         await callback.answer()
         await _enter_chat(callback.message, state, callback.from_user.id)
         return
@@ -204,7 +203,7 @@ async def chat_check_password(message: Message, state: FSMContext):
         return
 
     record_attempt(message.from_user.id, success=True)
-    await state.update_data(password_verified=True)
+    await refresh_session(message.from_user.id)
 
     await _enter_chat(message, state, message.from_user.id)
 
@@ -254,7 +253,6 @@ async def _enter_chat(message: Message, state: FSMContext, telegram_id: int):
 async def cmd_menu_from_chat(message: Message, state: FSMContext):
     data = await state.get_data()
     chat_msg_ids = data.get("chat_msg_ids", [])
-    password_verified = data.get("password_verified")
 
     # Удалить ВСЕ сообщения чата + команду /menu
     all_ids = chat_msg_ids + [message.message_id]
@@ -265,9 +263,6 @@ async def cmd_menu_from_chat(message: Message, state: FSMContext):
             pass
 
     await state.clear()
-    if password_verified:
-        await state.update_data(password_verified=True)
-
     await send_ui(message, state, MAIN_MENU_TEXT, MAIN_MENU_KB)
 
 

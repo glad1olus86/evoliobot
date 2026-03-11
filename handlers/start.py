@@ -13,7 +13,7 @@ from handlers.ui import (
 )
 from db.crud import get_user, get_user_by_phone, create_user
 from utils.validators import validate_name, normalize_phone
-from utils.auth import hash_password
+from utils.auth import hash_password, refresh_session
 
 router = Router()
 
@@ -233,6 +233,9 @@ async def process_confirm_password(message: Message, state: FSMContext):
         phone=data["phone"],
         password_hash=pw_hash,
     )
+
+    # Сразу активировать сессию на 3 дня
+    await refresh_session(message.from_user.id)
 
     bot_msg_id = (await state.get_data()).get("bot_msg_id")
     await state.clear()

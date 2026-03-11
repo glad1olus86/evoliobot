@@ -5,8 +5,13 @@ Společná logika ověření hesla a ochrany proti brute-force.
 import hashlib
 import hmac
 import time
+from datetime import datetime, timedelta, timezone
 
-from config import MAX_PASSWORD_ATTEMPTS, PASSWORD_BLOCK_SECONDS
+import aiosqlite
+
+from config import MAX_PASSWORD_ATTEMPTS, PASSWORD_BLOCK_SECONDS, DB_PATH
+
+SESSION_DAYS = 3  # сессия без пароля — 3 дня
 
 _password_attempts: dict[int, dict] = {}
 
@@ -48,3 +53,31 @@ def verify_password(entered: str, stored_hash: str) -> bool:
     """Bezpečné porovnání hesla s uloženým hashem (timing-safe)."""
     entered_hash = hash_password(entered)
     return hmac.compare_digest(entered_hash, stored_hash)
+
+
+async def is_session_valid(telegram_id: int) -> bool:
+    """Zkontroluje, zda má uživatel aktivní session (< SESSION_DAYS dní)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT password_verified_at FROM users WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+        row = await cursor.fetchone()
+        if not row or not row["password_verified_at"]:
+            return False
+        verified_at = datetime.fromisoformat(row["password_verified_at"])
+        if verified_at.tzinfo is None:
+            verified_at = verified_at.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) - verified_at < timedelta(days=SESSION_DAYS)
+
+
+async def refresh_session(telegram_id: int):
+    """Uloží aktuální čas jako password_verified_at."""
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET password_verified_at = ? WHERE telegram_id = ?",
+            (now, telegram_id),
+        )
+        await db.commit()
