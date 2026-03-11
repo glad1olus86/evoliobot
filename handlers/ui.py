@@ -7,7 +7,7 @@ Všechny zprávy uživatele se ihned po zpracování mažou.
 """
 
 import logging
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,22 @@ async def edit_ui(message: Message, state: FSMContext, text: str,
 
     # Fallback — pošleme novou
     await send_ui(message, state, text, keyboard)
+
+
+async def cleanup_quick_ai(source: Message | CallbackQuery, state: FSMContext):
+    """Smaže dočasné AI odpovědi + zprávy uživatele z quick-chatu."""
+    data = await state.get_data()
+    quick_ai_ids = data.get("quick_ai_ids", [])
+    if not quick_ai_ids:
+        return
+    bot = source.bot if hasattr(source, "bot") else source.message.bot
+    chat_id = source.chat.id if hasattr(source, "chat") else source.message.chat.id
+    for msg_id in quick_ai_ids:
+        try:
+            await bot.delete_message(chat_id, msg_id)
+        except Exception:
+            pass
+    await state.update_data(quick_ai_ids=[])
 
 
 async def _delete_old_ui(message: Message, state: FSMContext):

@@ -16,7 +16,7 @@ from aiogram.enums import ChatAction
 from aiogram.fsm.context import FSMContext
 
 from handlers.states import ChatMode
-from handlers.ui import delete_user_msg, send_ui, MAIN_MENU_KB, MAIN_MENU_TEXT
+from handlers.ui import delete_user_msg, send_ui, cleanup_quick_ai, MAIN_MENU_KB, MAIN_MENU_TEXT
 from db.crud import get_user
 from services.make_client import fetch_cases
 from services.gemini_client import ask_gemini
@@ -135,6 +135,7 @@ def _cases_to_context(cases_grouped: dict) -> str | None:
 
 @router.callback_query(F.data == "menu:chat")
 async def start_chat(callback: CallbackQuery, state: FSMContext):
+    await cleanup_quick_ai(callback, state)
     user = await get_user(callback.from_user.id)
     if not user:
         await callback.answer("Nejste registrován/a.", show_alert=True)

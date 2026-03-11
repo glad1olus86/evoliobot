@@ -12,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 
 from db.crud import get_user
 from handlers.states import ChatMode
-from handlers.ui import MAIN_MENU_KB, MAIN_MENU_TEXT, send_ui, delete_user_msg
+from handlers.ui import MAIN_MENU_KB, MAIN_MENU_TEXT, send_ui, delete_user_msg, cleanup_quick_ai
 from services.gemini_client import ask_gemini
 
 router = Router()
@@ -41,33 +41,11 @@ def _is_meaningful(text: str) -> bool:
     return True
 
 
-async def _cleanup_quick_ai(message_or_callback, state: FSMContext):
-    """Удалить временные AI-ответы из меню."""
-    data = await state.get_data()
-    quick_ai_ids = data.get("quick_ai_ids", [])
-    bot = (
-        message_or_callback.bot
-        if hasattr(message_or_callback, "bot")
-        else message_or_callback.message.bot
-    )
-    chat_id = (
-        message_or_callback.chat.id
-        if hasattr(message_or_callback, "chat")
-        else message_or_callback.message.chat.id
-    )
-    for msg_id in quick_ai_ids:
-        try:
-            await bot.delete_message(chat_id, msg_id)
-        except Exception:
-            pass
-    await state.update_data(quick_ai_ids=[])
-
-
 # ─── Профиль ───
 
 @router.callback_query(F.data == "menu:profile")
 async def show_profile(callback: CallbackQuery, state: FSMContext):
-    await _cleanup_quick_ai(callback, state)
+    await cleanup_quick_ai(callback, state)
     user = await get_user(callback.from_user.id)
     if not user:
         await callback.answer("Nejste registrován/a.", show_alert=True)
@@ -94,7 +72,7 @@ async def show_profile(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "menu:help")
 async def show_help(callback: CallbackQuery, state: FSMContext):
-    await _cleanup_quick_ai(callback, state)
+    await cleanup_quick_ai(callback, state)
     back_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 Hlavní menu", callback_data="menu:main")]
     ])
@@ -119,7 +97,7 @@ async def show_help(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "menu:main")
 async def back_to_main(callback: CallbackQuery, state: FSMContext):
-    await _cleanup_quick_ai(callback, state)
+    await cleanup_quick_ai(callback, state)
     data = await state.get_data()
     bot_msg_id = data.get("bot_msg_id")
     await state.clear()
