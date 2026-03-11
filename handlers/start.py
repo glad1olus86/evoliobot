@@ -11,7 +11,7 @@ from handlers.ui import (
     delete_user_msg, send_ui, edit_ui,
     MAIN_MENU_KB, MAIN_MENU_TEXT,
 )
-from db.crud import get_user, create_user
+from db.crud import get_user, get_user_by_phone, create_user
 from utils.validators import validate_name, normalize_phone
 from utils.auth import hash_password
 
@@ -159,6 +159,21 @@ async def _after_phone(message: Message, state: FSMContext, phone: str):
     # Убрать ReplyKeyboard
     remove_msg = await message.answer("⏳", reply_markup=ReplyKeyboardRemove())
     await remove_msg.delete()
+
+    # Проверка: номер уже зарегистрирован?
+    existing = await get_user_by_phone(phone)
+    if existing:
+        await send_ui(
+            message, state,
+            "⚠️ <b>Toto telefonní číslo je již registrováno.</b>\n\n"
+            "Pokud jste majitelem tohoto čísla, kontaktujte\n"
+            "kancelář pro pomoc.\n\n"
+            "📞 (+420) 732 394 849\n"
+            "✉️ info@modernipravnik.cz\n\n"
+            "Pro novou registraci stiskněte /start",
+        )
+        await state.clear()
+        return
 
     await state.update_data(phone=phone)
 
