@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
@@ -8,6 +10,7 @@ from handlers.states import ChatMode
 from handlers.ui import MAIN_MENU_KB, MAIN_MENU_TEXT, send_ui, delete_user_msg
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 @router.callback_query(F.data == "menu:profile")
@@ -75,11 +78,33 @@ async def back_to_main(callback: CallbackQuery, state: FSMContext):
 
 @router.message(Command("menu"))
 async def cmd_menu(message: Message, state: FSMContext):
+    await _reset_to_menu(message, state)
+
+
+# ─── Fallback: любое сообщение без стейта → меню или регистрация ───
+
+@router.message()
+async def fallback_any_message(message: Message, state: FSMContext):
+    """Ловит ВСЕ сообщения, не обработанные другими хендлерами."""
+    await _reset_to_menu(message, state)
+
+
+async def _reset_to_menu(message: Message, state: FSMContext):
+    """Удаляет сообщение юзера, чистит старые сообщения чата, показывает меню."""
     await delete_user_msg(message)
 
-    # Сохранить password_verified
+    # Сохранить нужные данные
     data = await state.get_data()
     password_verified = data.get("password_verified")
+    chat_msg_ids = data.get("chat_msg_ids", [])
+
+    # Удалить все сообщения чата (если остались после перезапуска и т.п.)
+    for msg_id in chat_msg_ids:
+        try:
+            await message.bot.delete_message(message.chat.id, msg_id)
+        except Exception:
+            pass
+
     await state.clear()
     if password_verified:
         await state.update_data(password_verified=True)
