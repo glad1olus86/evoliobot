@@ -21,23 +21,19 @@ logger = logging.getLogger(__name__)
 # Минимум для "осмысленного" сообщения
 _MIN_MEANINGFUL_LEN = 3
 
-# Быстрые триггерные слова (1 слово, но осмысленное)
-_TRIGGER_WORDS = re.compile(
-    r"^(связь|контакт|помощь|помоги|запись|приём|прием|schůzka|pomoc|kontakt|"
-    r"запиши|позвони|напиши|otázka|dotaz|poradit|konzultace|привет|ahoj|здравствуйте)$",
-    re.IGNORECASE,
-)
+# Рандомный мусор: только цифры, или только 1-2 буквы без смысла, спецсимволы
+_JUNK_PATTERN = re.compile(r"^[\d\s\W]+$|^[a-zA-Zа-яА-ЯёЁ]{1,2}$")
 
 
 def _is_meaningful(text: str) -> bool:
     """Zda zpráva vypadá jako skutečná otázka/žádost (ne náhodný znak)."""
     text = text.strip()
-    if len(text) < _MIN_MEANINGFUL_LEN:
+    if not text:
         return False
-    # Одно слово — только если триггер
-    if " " not in text:
-        return bool(_TRIGGER_WORDS.match(text))
-    # Несколько слов — считаем осмысленным
+    # Мусор: цифры, спецсимволы, или 1-2 случайные буквы
+    if _JUNK_PATTERN.match(text):
+        return False
+    # Всё остальное (слово 3+ букв, фраза) — осмысленное
     return True
 
 
@@ -143,16 +139,36 @@ async def fallback_any_message(message: Message, state: FSMContext):
     if _is_meaningful(text):
         await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
-        from handlers.chat import _postprocess
+        from handlers.chat import _postprocess, _expand_details, _cases_to_context
+        from handlers.cases import _group_by_pripad
+        from services.make_client import fetch_cases
 
         data = await state.get_data()
         quick_history = data.get("quick_history", [])
 
+        # Загрузить кейсы при первом сообщении (или использовать кеш)
+        cases_grouped = data.get("quick_cases")
+        cases_context = data.get("quick_cases_context")
+        if cases_grouped is None:
+            cases_list = await fetch_cases(
+                phone=user["phone"],
+                name=f"{user['first_name']} {user['last_name']}",
+            )
+            if cases_list:
+                cases_grouped = _group_by_pripad(cases_list)
+            else:
+                cases_grouped = {}
+            cases_context = _cases_to_context(cases_grouped)
+
         response = await ask_gemini(
             user_message=text,
             chat_history=quick_history,
+            cases_context=cases_context,
         )
-        html_response = _postprocess(response)
+
+        # Раскрыть {{DETAIL:ID}} теги
+        expanded = _expand_details(response, cases_grouped)
+        html_response = _postprocess(expanded)
 
         if len(html_response) > 4000:
             html_response = html_response[:4000] + "..."
@@ -180,6 +196,8 @@ async def fallback_any_message(message: Message, state: FSMContext):
         await state.update_data(
             quick_ai_ids=quick_ai_ids,
             quick_history=quick_history,
+            quick_cases=cases_grouped,
+            quick_cases_context=cases_context,
         )
         return
 
