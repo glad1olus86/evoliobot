@@ -21,9 +21,9 @@ def _normalize_phone(phone: str) -> str:
     return re.sub(r"[^\d+]", "", phone)
 
 
-def _format_notification(data: dict) -> str:
+def _format_notification(data: dict, user: dict) -> str:
     """Vytvoří HTML zprávu pro Telegram."""
-    klient = data.get("klientJmeno", "")
+    klient = f"{user['first_name']} {user['last_name']}"
     cislo = data.get("pripadCislo", "")
     nazev = data.get("pripadNazev", "")
     predmet = data.get("predmet", "")
@@ -90,7 +90,7 @@ async def handle_push(request: web.Request) -> web.Response:
         return web.json_response({"error": "user not found", "phone": phone}, status=404)
 
     telegram_id = user["telegram_id"]
-    html_message = _format_notification(data)
+    html_message = _format_notification(data, user)
 
     # Отправка через бота (bot передаётся в app при запуске)
     bot = request.app["bot"]
