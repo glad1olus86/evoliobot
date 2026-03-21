@@ -69,6 +69,23 @@ async def edit_ui(message: Message, state: FSMContext, text: str,
     await send_ui(message, state, text, keyboard)
 
 
+async def repost_ui(callback: CallbackQuery, state: FSMContext, text: str,
+                    keyboard: InlineKeyboardMarkup | None = None):
+    """
+    Smaže starou UI zprávu a odešle novou na KONEC chatu.
+    Tím zajistí, že menu je vždy dole (pod push notifikacemi).
+    """
+    data = await state.get_data()
+    old_id = data.get("bot_msg_id")
+    if old_id:
+        try:
+            await callback.message.bot.delete_message(callback.message.chat.id, old_id)
+        except Exception:
+            pass
+    msg = await callback.message.answer(text, reply_markup=keyboard)
+    await state.update_data(bot_msg_id=msg.message_id)
+
+
 async def ensure_bot_msg(callback: CallbackQuery, state: FSMContext):
     """Восстанавливает bot_msg_id из callback (на случай рестарта бота)."""
     data = await state.get_data()
@@ -77,19 +94,24 @@ async def ensure_bot_msg(callback: CallbackQuery, state: FSMContext):
 
 
 async def cleanup_quick_ai(source: Message | CallbackQuery, state: FSMContext):
-    """Smaže dočasné AI odpovědi + zprávy uživatele z quick-chatu."""
+    """Smaže dočasné AI odpovědi + zprávy uživatele z quick-chatu + dokumenty."""
     data = await state.get_data()
     quick_ai_ids = data.get("quick_ai_ids", [])
-    if not quick_ai_ids:
+    doc_msg_ids = data.get("doc_msg_ids", [])
+    ids_to_delete = quick_ai_ids + doc_msg_ids
+    if not ids_to_delete:
         return
     bot = source.bot if hasattr(source, "bot") else source.message.bot
     chat_id = source.chat.id if hasattr(source, "chat") else source.message.chat.id
-    for msg_id in quick_ai_ids:
+    for msg_id in ids_to_delete:
         try:
             await bot.delete_message(chat_id, msg_id)
         except Exception:
             pass
-    await state.update_data(quick_ai_ids=[], quick_history=[], quick_cases=None, quick_cases_context=None)
+    await state.update_data(
+        quick_ai_ids=[], quick_history=[], quick_cases=None,
+        quick_cases_context=None, doc_msg_ids=[],
+    )
 
 
 async def _delete_old_ui(message: Message, state: FSMContext):

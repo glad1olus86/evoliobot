@@ -5,7 +5,7 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, C
 from aiogram.fsm.context import FSMContext
 
 from handlers.states import CasesAccess
-from handlers.ui import delete_user_msg, edit_ui, cleanup_quick_ai, ensure_bot_msg, MAIN_MENU_KB, MAIN_MENU_TEXT
+from handlers.ui import delete_user_msg, edit_ui, send_ui, repost_ui, cleanup_quick_ai, ensure_bot_msg, MAIN_MENU_KB, MAIN_MENU_TEXT
 from db.crud import get_user, get_latest_documents_by_case, get_documents_by_case, get_document_by_id
 from services.make_client import fetch_cases
 from utils.formatters import format_case_card, format_case_button_text, format_case_archive
@@ -67,7 +67,8 @@ async def request_password(callback: CallbackQuery, state: FSMContext):
         await _load_and_show_cases(callback.message, state, callback.from_user.id)
         return
 
-    await callback.message.edit_text(
+    await repost_ui(
+        callback, state,
         "🔐 <b>Přístup k případům</b>\n\n"
         "Zadejte heslo:",
     )
@@ -192,7 +193,7 @@ async def show_case_detail(callback: CallbackQuery, state: FSMContext):
     text = format_case_card(items, latest_docs=latest_docs)
     if len(text) > 4000:
         text = text[:3997] + "..."
-    await callback.message.edit_text(text, reply_markup=kb)
+    await repost_ui(callback, state, text, kb)
     await callback.answer()
 
 
@@ -229,7 +230,7 @@ async def show_case_archive(callback: CallbackQuery, state: FSMContext):
     text = format_case_archive(items, documents=all_docs)
     if len(text) > 4000:
         text = text[:3997] + "..."
-    await callback.message.edit_text(text, reply_markup=kb)
+    await repost_ui(callback, state, text, kb)
     await callback.answer()
 
 
@@ -249,10 +250,14 @@ async def send_document_to_user(callback: CallbackQuery, state: FSMContext):
         return
 
     try:
-        await callback.message.answer_document(
+        sent = await callback.message.answer_document(
             document=doc["telegram_file_id"],
             caption=f"📎 {doc['filename']}",
         )
+        data = await state.get_data()
+        doc_msg_ids = data.get("doc_msg_ids", [])
+        doc_msg_ids.append(sent.message_id)
+        await state.update_data(doc_msg_ids=doc_msg_ids)
         await callback.answer()
     except Exception as e:
         logger.error("Failed to send document %s: %s", doc_id, e)
@@ -272,8 +277,9 @@ async def back_to_cases(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Seznam je zastaralý. Vyžádejte si případy znovu.", show_alert=True)
         return
 
-    await callback.message.edit_text(
+    await repost_ui(
+        callback, state,
         "📂 <b>Vaše případy:</b>",
-        reply_markup=_cases_list_kb(cases_grouped),
+        _cases_list_kb(cases_grouped),
     )
     await callback.answer()

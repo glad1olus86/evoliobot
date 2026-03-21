@@ -12,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 
 from db.crud import get_user
 from handlers.states import ChatMode
-from handlers.ui import MAIN_MENU_KB, MAIN_MENU_TEXT, send_ui, delete_user_msg, cleanup_quick_ai, ensure_bot_msg
+from handlers.ui import MAIN_MENU_KB, MAIN_MENU_TEXT, send_ui, repost_ui, delete_user_msg, cleanup_quick_ai, ensure_bot_msg
 from services.gemini_client import ask_gemini
 
 router = Router()
@@ -52,7 +52,8 @@ async def show_profile(callback: CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="🔙 Hlavní menu", callback_data="menu:main")]
     ])
 
-    await callback.message.edit_text(
+    await repost_ui(
+        callback, state,
         f"👤 <b>Váš profil</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"Jméno: {user['first_name']}\n"
@@ -60,7 +61,7 @@ async def show_profile(callback: CallbackQuery, state: FSMContext):
         f"Telefon: {user['phone']}\n"
         f"Datum registrace: {user['created_at']}\n"
         f"━━━━━━━━━━━━━━━━━━━━━",
-        reply_markup=back_kb,
+        back_kb,
     )
     await callback.answer()
 
@@ -75,7 +76,8 @@ async def show_help(callback: CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="🔙 Hlavní menu", callback_data="menu:main")]
     ])
 
-    await callback.message.edit_text(
+    await repost_ui(
+        callback, state,
         "ℹ️ <b>Nápověda</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "Tento bot umožňuje prohlížet\n"
@@ -86,7 +88,7 @@ async def show_help(callback: CallbackQuery, state: FSMContext):
         "👤 <b>Profil</b> — váš účet\n\n"
         "Příkaz /menu — návrat do menu\n"
         "━━━━━━━━━━━━━━━━━━━━━",
-        reply_markup=back_kb,
+        back_kb,
     )
     await callback.answer()
 
@@ -103,7 +105,7 @@ async def back_to_main(callback: CallbackQuery, state: FSMContext):
     if bot_msg_id:
         await state.update_data(bot_msg_id=bot_msg_id)
 
-    await callback.message.edit_text(MAIN_MENU_TEXT, reply_markup=MAIN_MENU_KB)
+    await repost_ui(callback, state, MAIN_MENU_TEXT, MAIN_MENU_KB)
     await callback.answer()
 
 
