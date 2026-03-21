@@ -126,8 +126,12 @@ async def _send_document(bot, telegram_id: int, doc: dict) -> str | None:
     """Dekóduje base64 a odešle jako Telegram dokument. Vrací file_id nebo None."""
     nazev = doc["nazev"]
     try:
-        # Make.com может передать base64 с переносами строк и пробелами
-        b64_clean = doc["base64"].replace("\n", "").replace("\r", "").replace(" ", "")
+        raw = doc["base64"]
+        # Make.com оборачивает Long String в IMTString(число):данные
+        if raw.startswith("IMTString("):
+            raw = raw.split(":", 1)[1] if ":" in raw else raw
+        # Убрать переносы строк и пробелы
+        b64_clean = raw.replace("\n", "").replace("\r", "").replace(" ", "")
         file_bytes = base64.b64decode(b64_clean)
     except Exception as e:
         logger.error("Failed to decode base64 for %s: %s", nazev, e)
