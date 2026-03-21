@@ -55,11 +55,12 @@ def _format_date(raw: str) -> str:
     return raw[:10]
 
 
-def format_case_card(items: list[dict]) -> str:
+def format_case_card(items: list[dict], latest_docs: list[dict] | None = None) -> str:
     """Karta případu (seskupeno podle idPripad).
 
     items — seznam všech záznamů se stejným idPripad,
     seřazených podle idUkol sestupně (nejnovější první).
+    latest_docs — volitelný seznam posledních dokumentů z DB.
     """
     first = items[0]
     nazev = _get(first, "pripadNazev")
@@ -83,19 +84,33 @@ def format_case_card(items: list[dict]) -> str:
     if poznamka and poznamka != "—":
         lines.append(f"\n{poznamka}")
 
+    if latest_docs:
+        lines.append("\n📎 <b>Dokumenty:</b>")
+        for doc in latest_docs[:5]:
+            date_str = doc.get("created_at", "")[:10] if doc.get("created_at") else ""
+            lines.append(f"  📎 {doc['filename']} ({date_str})")
+
     lines.append("━━━━━━━━━━━━━━━━━━━━━")
 
     return "\n".join(lines)
 
 
-def format_case_archive(items: list[dict]) -> str:
+def format_case_archive(items: list[dict], documents: list[dict] | None = None) -> str:
     """Archiv — seznam všech záznamů pro jeden případ.
 
     items seřazeny podle idUkol sestupně.
+    documents — volitelný seznam dokumentů z DB.
     """
     first = items[0]
     nazev = _get(first, "pripadNazev")
     id_pripad = _get(first, "idPripad")
+
+    # Группировка документов по дате
+    docs_by_date: dict[str, list[dict]] = {}
+    if documents:
+        for doc in documents:
+            doc_date = doc.get("created_at", "")[:10] if doc.get("created_at") else ""
+            docs_by_date.setdefault(doc_date, []).append(doc)
 
     lines = [
         f"📜 <b>Archiv: {nazev}</b>",
@@ -103,6 +118,7 @@ def format_case_archive(items: list[dict]) -> str:
         "━━━━━━━━━━━━━━━━━━━━━",
     ]
 
+    shown_dates = set()
     for item in items:
         termin = _format_date(_get(item, "termin", default=""))
         predmet = _get(item, "predmet", default="")
@@ -114,17 +130,31 @@ def format_case_archive(items: list[dict]) -> str:
         if len(poznamka) > 200:
             poznamka = poznamka[:197] + "..."
 
-        # Заголовок: дата + predmet (жирный)
         header_parts = []
         if termin and termin != "—":
             header_parts.append(f"📅 {termin}")
+            shown_dates.add(termin)
         if predmet and predmet != "—":
             header_parts.append(f"<b>{predmet}</b>")
 
         if header_parts:
             lines.append(" — ".join(header_parts))
         lines.append(poznamka)
-        lines.append("")  # пустая строка между записями
+
+        # Документы привязанные к этой дате
+        if termin and termin != "—" and termin in docs_by_date:
+            for doc in docs_by_date[termin]:
+                lines.append(f"  📎 {doc['filename']}")
+
+        lines.append("")
+
+    # Документы без привязки к дате обновления
+    for doc_date, docs in docs_by_date.items():
+        if doc_date and doc_date not in shown_dates:
+            lines.append(f"📅 {doc_date}")
+            for doc in docs:
+                lines.append(f"  📎 {doc['filename']}")
+            lines.append("")
 
     lines.append("━━━━━━━━━━━━━━━━━━━━━")
 

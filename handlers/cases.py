@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 
 from handlers.states import CasesAccess
 from handlers.ui import delete_user_msg, edit_ui, cleanup_quick_ai, ensure_bot_msg, MAIN_MENU_KB, MAIN_MENU_TEXT
-from db.crud import get_user
+from db.crud import get_user, get_latest_documents_by_case, get_documents_by_case, get_document_by_id
 from services.make_client import fetch_cases
 from utils.formatters import format_case_card, format_case_button_text, format_case_archive
 from utils.auth import check_blocked, record_attempt, remaining_attempts, verify_password, is_session_valid, refresh_session
@@ -175,12 +175,24 @@ async def show_case_detail(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Případ nenalezen.", show_alert=True)
         return
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📜 Archiv", callback_data=f"archive:{case_id}")],
-        [InlineKeyboardButton(text="🔙 Zpět na případy", callback_data="back_to_cases")],
-    ])
+    latest_docs = await get_latest_documents_by_case(case_id, callback.from_user.id)
 
-    await callback.message.edit_text(format_case_card(items), reply_markup=kb)
+    buttons = []
+    for doc in latest_docs[:20]:
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"📎 {doc['filename'][:40]}",
+                callback_data=f"doc:{doc['id']}",
+            )
+        ])
+    buttons.append([InlineKeyboardButton(text="📜 Archiv", callback_data=f"archive:{case_id}")])
+    buttons.append([InlineKeyboardButton(text="🔙 Zpět na případy", callback_data="back_to_cases")])
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    text = format_case_card(items, latest_docs=latest_docs)
+    if len(text) > 4000:
+        text = text[:3997] + "..."
+    await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
 
 
@@ -199,13 +211,52 @@ async def show_case_archive(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Případ nenalezen.", show_alert=True)
         return
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Zpět na poslední", callback_data=f"case:{case_id}")],
-        [InlineKeyboardButton(text="🔙 Zpět na případy", callback_data="back_to_cases")],
-    ])
+    all_docs = await get_documents_by_case(case_id, callback.from_user.id)
 
-    await callback.message.edit_text(format_case_archive(items), reply_markup=kb)
+    buttons = []
+    for doc in all_docs[:20]:
+        date_str = doc.get("created_at", "")[:10] if doc.get("created_at") else ""
+        label = f"📎 {doc['filename'][:30]}"
+        if date_str:
+            label += f" ({date_str})"
+        buttons.append([
+            InlineKeyboardButton(text=label[:60], callback_data=f"doc:{doc['id']}")
+        ])
+    buttons.append([InlineKeyboardButton(text="🔙 Zpět na poslední", callback_data=f"case:{case_id}")])
+    buttons.append([InlineKeyboardButton(text="🔙 Zpět na případy", callback_data="back_to_cases")])
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    text = format_case_archive(items, documents=all_docs)
+    if len(text) > 4000:
+        text = text[:3997] + "..."
+    await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
+
+
+# ─── Stažení dokumentu ───
+
+@router.callback_query(F.data.startswith("doc:"))
+async def send_document_to_user(callback: CallbackQuery, state: FSMContext):
+    doc_id = callback.data.split(":", 1)[1]
+    doc = await get_document_by_id(int(doc_id))
+
+    if not doc:
+        await callback.answer("Dokument nenalezen.", show_alert=True)
+        return
+
+    if doc["telegram_id"] != callback.from_user.id:
+        await callback.answer("Přístup odepřen.", show_alert=True)
+        return
+
+    try:
+        await callback.message.answer_document(
+            document=doc["telegram_file_id"],
+            caption=f"📎 {doc['filename']}",
+        )
+        await callback.answer()
+    except Exception as e:
+        logger.error("Failed to send document %s: %s", doc_id, e)
+        await callback.answer("Chyba při odesílání dokumentu.", show_alert=True)
 
 
 # ─── Navigace ───

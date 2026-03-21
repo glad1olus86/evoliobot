@@ -23,10 +23,29 @@ MIGRATION_ADD_VERIFIED_AT = """
 ALTER TABLE users ADD COLUMN password_verified_at DATETIME DEFAULT NULL;
 """
 
+CREATE_DOCUMENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id TEXT NOT NULL,
+    ukol_id TEXT DEFAULT NULL,
+    telegram_id INTEGER NOT NULL,
+    filename TEXT NOT NULL,
+    telegram_file_id TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+CREATE_DOCUMENTS_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_documents_case_telegram
+ON documents(case_id, telegram_id);
+"""
+
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(CREATE_USERS_TABLE)
+        await db.execute(CREATE_DOCUMENTS_TABLE)
+        await db.execute(CREATE_DOCUMENTS_INDEX)
         # Миграции — если колонки ещё не существуют
         for migration in (MIGRATION_ADD_PASSWORD, MIGRATION_ADD_VERIFIED_AT):
             try:
