@@ -21,6 +21,16 @@ def _calendar_link(handler_name: str | None = None) -> str:
     return f'📅 <a href="{url}">{label}</a>'
 
 
+def _find_in_items(items: list[dict], *keys) -> str:
+    """Hledá první neprázdnou hodnotu v seznamu záznamů."""
+    for item in items:
+        for key in keys:
+            val = item.get(key)
+            if val is not None and str(val).strip():
+                return str(val).strip()
+    return ""
+
+
 def _strip_html(text: str) -> str:
     """Odstraní HTML tagy z textu."""
     if not text:
@@ -96,8 +106,8 @@ def format_case_card(items: list[dict], latest_docs: list[dict] | None = None) -
     if poznamka and poznamka != "—":
         lines.append(f"\n{poznamka}")
 
-    # Kdo vyřizuje případ
-    vyrizuje = _get(first, "vyrizujeJmeno", default="")
+    # Kdo vyřizuje případ (hledá ve všech záznamech — starší mohou mít NULL)
+    vyrizuje = _find_in_items(items, "vyrizujeJmeno")
     if vyrizuje:
         lines.append(f"\n👨‍💼 <b>Vyřizuje:</b> {vyrizuje}")
 
@@ -130,7 +140,7 @@ def format_case_archive(items: list[dict], documents: list[dict] | None = None) 
             doc_date = doc.get("created_at", "")[:10] if doc.get("created_at") else ""
             docs_by_date.setdefault(doc_date, []).append(doc)
 
-    vyrizuje = _get(first, "vyrizujeJmeno", default="")
+    vyrizuje = _find_in_items(items, "vyrizujeJmeno")
 
     lines = [
         f"📜 <b>Archiv: {nazev}</b>",
