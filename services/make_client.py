@@ -93,6 +93,9 @@ async def fetch_cases(phone: str, name: str) -> list[dict] | None:
 
                 cases = _parse_response(data)
                 logger.info("Parsed %d case(s)", len(cases))
+                if cases:
+                    logger.info("First case keys: %s", list(cases[0].keys()))
+                    logger.info("First case data: %s", str(cases[0])[:800])
                 return cases
 
     except aiohttp.ClientError as e:
