@@ -109,3 +109,52 @@ async def get_latest_documents_by_case(
             (case_id, telegram_id, limit),
         )
         return [dict(r) for r in await cursor.fetchall()]
+
+
+# ─── Push notifikace ───
+
+async def save_push_notification(
+    case_id: str,
+    telegram_id: int,
+    predmet: str,
+    detail: str,
+    termin: str,
+    vyrizuje: str,
+    full_html: str,
+    ukol_id: str | None = None,
+) -> dict:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            """INSERT INTO push_notifications
+               (case_id, ukol_id, telegram_id, predmet, detail, termin, vyrizuje, full_html)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (case_id, ukol_id, telegram_id, predmet, detail, termin, vyrizuje, full_html),
+        )
+        await db.commit()
+        push_id = cursor.lastrowid
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM push_notifications WHERE id = ?", (push_id,))
+        row = await cur.fetchone()
+        return dict(row)
+
+
+async def get_push_notifications_by_case(case_id: str, telegram_id: int) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT * FROM push_notifications
+               WHERE case_id = ? AND telegram_id = ?
+               ORDER BY created_at DESC""",
+            (case_id, telegram_id),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+
+
+async def get_push_notification_by_id(push_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM push_notifications WHERE id = ?", (push_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None

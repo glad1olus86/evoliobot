@@ -14,7 +14,7 @@ from aiohttp import web
 from aiogram.types import BufferedInputFile
 
 from config import PUSH_WEBHOOK_PORT, PUSH_WEBHOOK_SECRET
-from db.crud import get_user_by_phone, save_document
+from db.crud import get_user_by_phone, save_document, save_push_notification
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +214,22 @@ async def handle_push(request: web.Request) -> web.Response:
     except Exception as e:
         logger.error("Failed to send push to %s: %s", telegram_id, e)
         return web.json_response({"error": str(e)}, status=500)
+
+    # Сохранить нотификацию в БД для архива
+    if case_id:
+        try:
+            await save_push_notification(
+                case_id=case_id,
+                telegram_id=telegram_id,
+                predmet=data.get("predmet", ""),
+                detail=data.get("detail", ""),
+                termin=data.get("termin", ""),
+                vyrizuje=data.get("vyrizujeJmeno", ""),
+                full_html=html_message,
+                ukol_id=ukol_id,
+            )
+        except Exception as e:
+            logger.error("Failed to save push notification: %s", e)
 
     # Отправка документов (если есть)
     if documents:

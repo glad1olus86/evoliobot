@@ -132,11 +132,16 @@ def format_case_card(items: list[dict], latest_docs: list[dict] | None = None) -
     return "\n".join(lines)
 
 
-def format_case_archive(items: list[dict], documents: list[dict] | None = None) -> str:
+def format_case_archive(
+    items: list[dict],
+    documents: list[dict] | None = None,
+    push_notifications: list[dict] | None = None,
+) -> str:
     """Archiv — seznam všech záznamů pro jeden případ.
 
     items seřazeny podle idUkol sestupně.
     documents — volitelný seznam dokumentů z DB.
+    push_notifications — volitelný seznam push notifikací z DB.
     """
     first = items[0]
     nazev = _get(first, "pripadNazev")
@@ -151,12 +156,17 @@ def format_case_archive(items: list[dict], documents: list[dict] | None = None) 
 
     vyrizuje = _find_in_items(items, "vyrizujeJmeno")
 
+    # Счётчик пушей
+    push_count = len(push_notifications) if push_notifications else 0
+
     lines = [
         f"📜 <b>Archiv: {nazev}</b>",
         f"🆔 ID případu: {id_pripad}",
     ]
     if vyrizuje:
         lines.append(f"👨‍💼 Vyřizuje: {vyrizuje}")
+    if push_count:
+        lines.append(f"🔔 Notifikací: {push_count}")
     lines.append("━━━━━━━━━━━━━━━━━━━━━")
 
     shown_raw_dates = set()

@@ -40,12 +40,34 @@ CREATE INDEX IF NOT EXISTS idx_documents_case_telegram
 ON documents(case_id, telegram_id);
 """
 
+CREATE_PUSH_NOTIFICATIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS push_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id TEXT NOT NULL,
+    ukol_id TEXT DEFAULT NULL,
+    telegram_id INTEGER NOT NULL,
+    predmet TEXT DEFAULT '',
+    detail TEXT DEFAULT '',
+    termin TEXT DEFAULT '',
+    vyrizuje TEXT DEFAULT '',
+    full_html TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+CREATE_PUSH_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_push_case_telegram
+ON push_notifications(case_id, telegram_id);
+"""
+
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(CREATE_USERS_TABLE)
         await db.execute(CREATE_DOCUMENTS_TABLE)
         await db.execute(CREATE_DOCUMENTS_INDEX)
+        await db.execute(CREATE_PUSH_NOTIFICATIONS_TABLE)
+        await db.execute(CREATE_PUSH_INDEX)
         # Миграции — если колонки ещё не существуют
         for migration in (MIGRATION_ADD_PASSWORD, MIGRATION_ADD_VERIFIED_AT):
             try:

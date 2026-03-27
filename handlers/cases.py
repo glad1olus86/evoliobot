@@ -6,7 +6,10 @@ from aiogram.fsm.context import FSMContext
 
 from handlers.states import CasesAccess
 from handlers.ui import delete_user_msg, edit_ui, send_ui, repost_ui, cleanup_quick_ai, ensure_bot_msg, MAIN_MENU_KB, MAIN_MENU_TEXT
-from db.crud import get_user, get_latest_documents_by_case, get_documents_by_case, get_document_by_id
+from db.crud import (
+    get_user, get_latest_documents_by_case, get_documents_by_case,
+    get_document_by_id, get_push_notifications_by_case, get_push_notification_by_id,
+)
 from services.make_client import fetch_cases
 from utils.formatters import format_case_card, format_case_button_text, format_case_archive
 from utils.auth import check_blocked, record_attempt, remaining_attempts, verify_password, is_session_valid, refresh_session
@@ -213,10 +216,29 @@ async def show_case_archive(callback: CallbackQuery, state: FSMContext):
         return
 
     all_docs = await get_documents_by_case(case_id, callback.from_user.id)
+    push_list = await get_push_notifications_by_case(case_id, callback.from_user.id)
 
     buttons = []
+    # Кнопки пушей
+    for push in push_list[:20]:
+        p_date = push.get("created_at", "")[:10] if push.get("created_at") else ""
+        if p_date and len(p_date) == 10 and "-" in p_date:
+            parts = p_date.split("-")
+            p_date = f"{parts[2]}.{parts[1]}.{parts[0]}"
+        p_subj = push.get("predmet", "")
+        if p_subj:
+            label = f"🔔 {p_subj[:30]} ({p_date})"
+        else:
+            label = f"🔔 Push {p_date}"
+        buttons.append([
+            InlineKeyboardButton(text=label[:60], callback_data=f"push:{push['id']}:{case_id}")
+        ])
+    # Кнопки документов
     for doc in all_docs[:20]:
         date_str = doc.get("created_at", "")[:10] if doc.get("created_at") else ""
+        if date_str and len(date_str) == 10 and "-" in date_str:
+            parts = date_str.split("-")
+            date_str = f"{parts[2]}.{parts[1]}.{parts[0]}"
         label = f"📎 {doc['filename'][:30]}"
         if date_str:
             label += f" ({date_str})"
@@ -227,7 +249,7 @@ async def show_case_archive(callback: CallbackQuery, state: FSMContext):
     buttons.append([InlineKeyboardButton(text="🔙 Zpět na případy", callback_data="back_to_cases")])
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-    text = format_case_archive(items, documents=all_docs)
+    text = format_case_archive(items, documents=all_docs, push_notifications=push_list)
     if len(text) > 4000:
         text = text[:3997] + "..."
     await repost_ui(callback, state, text, kb)
@@ -262,6 +284,38 @@ async def send_document_to_user(callback: CallbackQuery, state: FSMContext):
     except Exception as e:
         logger.error("Failed to send document %s: %s", doc_id, e)
         await callback.answer("Chyba při odesílání dokumentu.", show_alert=True)
+
+
+# ─── Zobrazení push notifikace ───
+
+@router.callback_query(F.data.startswith("push:"))
+async def show_push_detail(callback: CallbackQuery, state: FSMContext):
+    await ensure_bot_msg(callback, state)
+    await cleanup_quick_ai(callback, state)
+    parts = callback.data.split(":", 2)
+    push_id = int(parts[1])
+    case_id = parts[2] if len(parts) > 2 else ""
+
+    push = await get_push_notification_by_id(push_id)
+    if not push:
+        await callback.answer("Notifikace nenalezena.", show_alert=True)
+        return
+
+    if push["telegram_id"] != callback.from_user.id:
+        await callback.answer("Přístup odepřen.", show_alert=True)
+        return
+
+    buttons = []
+    if case_id:
+        buttons.append([InlineKeyboardButton(text="🔙 Zpět na archiv", callback_data=f"archive:{case_id}")])
+    buttons.append([InlineKeyboardButton(text="🔙 Zpět na případy", callback_data="back_to_cases")])
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    text = push["full_html"]
+    if len(text) > 4000:
+        text = text[:3997] + "..."
+    await repost_ui(callback, state, text, kb)
+    await callback.answer()
 
 
 # ─── Navigace ───
