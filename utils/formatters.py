@@ -8,6 +8,18 @@ Pole z Data store "Aktivity Evolio":
 
 import re
 
+CALENDAR_BASE_URL = "https://calendar.app.google/5uMEKH4TLEKK2kLd7"
+
+
+def _calendar_link(handler_name: str | None = None) -> str:
+    """Vrátí odkaz na kalendář, volitelně personalizovaný."""
+    url = CALENDAR_BASE_URL
+    if handler_name:
+        anchor = handler_name.replace(" ", "")
+        url = f"{url}#{anchor}"
+    label = f"Sjednat schůzku s {handler_name}" if handler_name else "Sjednat si schůzku"
+    return f'📅 <a href="{url}">{label}</a>'
+
 
 def _strip_html(text: str) -> str:
     """Odstraní HTML tagy z textu."""
@@ -84,13 +96,19 @@ def format_case_card(items: list[dict], latest_docs: list[dict] | None = None) -
     if poznamka and poznamka != "—":
         lines.append(f"\n{poznamka}")
 
+    # Kdo vyřizuje případ
+    vyrizuje = _get(first, "vyrizujeJmeno", default="")
+    if vyrizuje:
+        lines.append(f"\n👨‍💼 <b>Vyřizuje:</b> {vyrizuje}")
+
     if latest_docs:
         lines.append("\n📎 <b>Dokumenty:</b>")
         for doc in latest_docs[:5]:
             date_str = doc.get("created_at", "")[:10] if doc.get("created_at") else ""
             lines.append(f"  📎 {doc['filename']} ({date_str})")
 
-    lines.append("━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("\n━━━━━━━━━━━━━━━━━━━━━")
+    lines.append(_calendar_link(vyrizuje if vyrizuje else None))
 
     return "\n".join(lines)
 
@@ -112,11 +130,15 @@ def format_case_archive(items: list[dict], documents: list[dict] | None = None) 
             doc_date = doc.get("created_at", "")[:10] if doc.get("created_at") else ""
             docs_by_date.setdefault(doc_date, []).append(doc)
 
+    vyrizuje = _get(first, "vyrizujeJmeno", default="")
+
     lines = [
         f"📜 <b>Archiv: {nazev}</b>",
         f"🆔 ID případu: {id_pripad}",
-        "━━━━━━━━━━━━━━━━━━━━━",
     ]
+    if vyrizuje:
+        lines.append(f"👨‍💼 Vyřizuje: {vyrizuje}")
+    lines.append("━━━━━━━━━━━━━━━━━━━━━")
 
     shown_dates = set()
     for item in items:

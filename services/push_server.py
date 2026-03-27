@@ -55,12 +55,24 @@ def _format_notification(data: dict, user: dict) -> str:
     if termin:
         lines.append(f"📅 <b>Datum aktualizace:</b> {termin}")
 
+    vyrizuje = data.get("vyrizujeJmeno", "")
+    if vyrizuje:
+        lines.append(f"\n👨‍💼 <b>Vyřizuje:</b> {vyrizuje}")
+
+    # Персональная ссылка на календарь
+    cal_url = "https://calendar.app.google/5uMEKH4TLEKK2kLd7"
+    if vyrizuje:
+        cal_url = f"{cal_url}#{vyrizuje.replace(' ', '')}"
+        cal_label = f"Sjednat schůzku s {vyrizuje}"
+    else:
+        cal_label = "Sjednat si schůzku"
+
     lines.append(
         "\n━━━━━━━━━━━━━━━━━━━━━\n"
         "📞 (+420) 732 394 849\n"
         "✉️ info@modernipravnik.cz\n"
         "🕐 Po–Pá 9:00–18:00\n\n"
-        '📅 <a href="https://calendar.app.google/5uMEKH4TLEKK2kLd7">Sjednat si schůzku</a>'
+        f'📅 <a href="{cal_url}">{cal_label}</a>'
     )
 
     return "\n".join(lines)

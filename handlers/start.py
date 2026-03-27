@@ -95,7 +95,11 @@ async def process_full_name(message: Message, state: FSMContext):
         f"✅ Jméno: <b>{first_name}</b>\n"
         f"✅ Příjmení: <b>{last_name}</b>\n\n"
         "📱 Stiskněte tlačítko níže pro sdílení\n"
-        "vašeho telefonního čísla:",
+        "vašeho telefonního čísla:\n\n"
+        "<i>Disclaimer: Nebojte se, Vaše data a sdělené telefonní číslo "
+        "jsou s námi v bezpečí. Vaše telefonní číslo slouží jen k propojení "
+        "se systémem moderniPravnik.cz a k tomu, abyste se jen Vy ke svým "
+        "informacím bezpečně dostali.</i>",
         reply_markup=CONTACT_KB,
     )
     await state.update_data(contact_msg_id=contact_msg.message_id)
