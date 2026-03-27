@@ -71,10 +71,14 @@ def _get(case: dict, *keys, default="—") -> str:
 
 
 def _format_date(raw: str) -> str:
-    """Extrahuje datum YYYY-MM-DD z ISO řetězce jako 2026-03-09T08:00:00."""
+    """Převede ISO datum 2026-03-09T08:00:00 na DD.MM.YYYY."""
     if not raw or raw == "—":
         return "—"
-    return raw[:10]
+    date_part = raw[:10]
+    parts = date_part.split("-")
+    if len(parts) == 3:
+        return f"{parts[2]}.{parts[1]}.{parts[0]}"
+    return date_part
 
 
 def format_case_card(items: list[dict], latest_docs: list[dict] | None = None) -> str:
@@ -114,10 +118,15 @@ def format_case_card(items: list[dict], latest_docs: list[dict] | None = None) -
     if latest_docs:
         lines.append("\n📎 <b>Dokumenty:</b>")
         for doc in latest_docs[:5]:
-            date_str = doc.get("created_at", "")[:10] if doc.get("created_at") else ""
+            date_raw = doc.get("created_at", "")[:10] if doc.get("created_at") else ""
+            date_str = _format_date(date_raw)
             lines.append(f"  📎 {doc['filename']} ({date_str})")
 
     lines.append("\n━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("📞 (+420) 732 394 849")
+    lines.append("✉️ info@modernipravnik.cz")
+    lines.append("🕐 Po–Pá 9:00–18:00")
+    lines.append("")
     lines.append(_calendar_link(vyrizuje if vyrizuje else None))
 
     return "\n".join(lines)
@@ -150,9 +159,10 @@ def format_case_archive(items: list[dict], documents: list[dict] | None = None) 
         lines.append(f"👨‍💼 Vyřizuje: {vyrizuje}")
     lines.append("━━━━━━━━━━━━━━━━━━━━━")
 
-    shown_dates = set()
+    shown_raw_dates = set()
     for item in items:
-        termin = _format_date(_get(item, "termin", default=""))
+        termin_raw = _get(item, "termin", default="")[:10]
+        termin = _format_date(termin_raw)
         predmet = _get(item, "predmet", default="")
         poznamka = _html_to_telegram(_get(item, "poznamka", default=""))
 
@@ -165,7 +175,7 @@ def format_case_archive(items: list[dict], documents: list[dict] | None = None) 
         header_parts = []
         if termin and termin != "—":
             header_parts.append(f"📅 {termin}")
-            shown_dates.add(termin)
+            shown_raw_dates.add(termin_raw)
         if predmet and predmet != "—":
             header_parts.append(f"<b>{predmet}</b>")
 
@@ -174,21 +184,28 @@ def format_case_archive(items: list[dict], documents: list[dict] | None = None) 
         lines.append(poznamka)
 
         # Документы привязанные к этой дате
-        if termin and termin != "—" and termin in docs_by_date:
-            for doc in docs_by_date[termin]:
+        if termin_raw and termin_raw != "—" and termin_raw in docs_by_date:
+            for doc in docs_by_date[termin_raw]:
                 lines.append(f"  📎 {doc['filename']}")
 
         lines.append("")
 
     # Документы без привязки к дате обновления
     for doc_date, docs in docs_by_date.items():
-        if doc_date and doc_date not in shown_dates:
-            lines.append(f"📅 {doc_date}")
+        if doc_date and doc_date not in shown_raw_dates:
+            lines.append(f"📅 {_format_date(doc_date)}")
             for doc in docs:
                 lines.append(f"  📎 {doc['filename']}")
             lines.append("")
 
     lines.append("━━━━━━━━━━━━━━━━━━━━━")
+    if vyrizuje:
+        lines.append(f"👨‍💼 <b>Vyřizuje:</b> {vyrizuje}")
+    lines.append("📞 (+420) 732 394 849")
+    lines.append("✉️ info@modernipravnik.cz")
+    lines.append("🕐 Po–Pá 9:00–18:00")
+    lines.append("")
+    lines.append(_calendar_link(vyrizuje if vyrizuje else None))
 
     return "\n".join(lines)
 
